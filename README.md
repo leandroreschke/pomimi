@@ -2,6 +2,8 @@
 
 A simple, native, and aesthetic Pomodoro timer written in Rust.
 
+<img width="451" height="184" alt="Screenshot 2026-01-19 at 10 01 59 PM" src="https://github.com/user-attachments/assets/57a3c0e5-6114-4ecf-8ec9-4e285d282e21" />
+
 ## Features
 - **Zero Dependencies**: Built with standard Rust libraries only.
 - **Beautiful UI**: Gradient progress bars (Indigo to Sunset Orange) with dithered backgrounds.
