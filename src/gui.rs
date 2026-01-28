@@ -2,7 +2,7 @@ use iced::{Element, Task, Theme, Subscription, time, Length, window, Size};
 use iced::widget::{column, container, text, button, center, progress_bar, row, text_input, checkbox, scrollable, horizontal_space};
 use crate::theme;
 use crate::model::{TodoList, TodoItem, Config};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq)]
 enum ViewMode {
@@ -41,7 +41,7 @@ pub struct PomimiApp {
 pub enum Message {
     // Timer
     ToggleTimer,
-    Tick(Instant),
+    Tick,
     ResetTimer,
     SetDuration(Duration),
 
@@ -107,7 +107,7 @@ impl PomimiApp {
                 self.is_running = !self.is_running;
                 Task::none()
             }
-            Message::Tick(_) => {
+            Message::Tick => {
                 if self.is_running {
                     if self.remaining.as_secs() > 0 {
                         self.remaining = self.remaining.saturating_sub(Duration::from_secs(1));
@@ -437,7 +437,7 @@ impl PomimiApp {
 
     pub fn subscription(&self) -> Subscription<Message> {
         if self.is_running {
-            time::every(Duration::from_secs(1)).map(Message::Tick)
+            time::every(Duration::from_secs(1)).map(|_| Message::Tick)
         } else {
             Subscription::none()
         }
