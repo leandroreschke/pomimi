@@ -1,449 +1,614 @@
-use iced::{Element, Task, Theme, Subscription, time, Length, window, Size};
-use iced::widget::{column, container, text, button, center, progress_bar, row, text_input, checkbox, scrollable, horizontal_space};
+use iced::{Element, Task, Theme, Subscription, time, Length, window, Size, Color};
+use iced::widget::{column, container, text, button, center, row, text_input, scrollable, horizontal_space, stack};
 use crate::theme;
-use crate::model::{TodoList, TodoItem, Config};
+use crate::model::{Database, Task as DbTask};
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq)]
-enum ViewMode {
+pub enum ViewMode {
     Full,
     Mini,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum TimerPhase {
+pub enum Phase {
     Focus,
-    Break,
+    ShortBreak,
+    LongBreak,
 }
 
-pub struct PomimiApp {
-    // Timer
-    duration: Duration,
-    remaining: Duration,
+impl Phase {
+    fn duration_secs(&self) -> u64 {
+        match self {
+            Phase::Focus => 25 * 60,
+            Phase::ShortBreak => 5 * 60,
+            Phase::LongBreak => 30 * 60,
+        }
+    }
+
+    fn label(&self) -> &str {
+        match self {
+            Phase::Focus => "Pomodoro Active",
+            Phase::ShortBreak => "Short Break",
+            Phase::LongBreak => "Long Break",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TimerState {
+    phase: Phase,
+    remaining_secs: u64,
+    total_secs: u64,
     is_running: bool,
-    timer_phase: TimerPhase,
-    focus_duration: Duration,
-    break_duration: Duration,
+    cycles_completed: usize,
+}
 
-    // Todo
-    todo_lists: Vec<TodoList>,
-    active_list_index: usize,
-    new_todo_input: String,
-    new_list_input: String,
-    is_creating_list: bool,
+impl Default for TimerState {
+    fn default() -> Self {
+        Self {
+            phase: Phase::Focus,
+            remaining_secs: Phase::Focus.duration_secs(),
+            total_secs: Phase::Focus.duration_secs(),
+            is_running: false,
+            cycles_completed: 0,
+        }
+    }
+}
 
-    // App State
-    config: Config,
+#[derive(Debug, Clone)]
+pub struct State {
+    db: Database,
+    tasks: Vec<DbTask>,
+    timer: TimerState,
+    session_focus_seconds: i64,
     view_mode: ViewMode,
+    new_task_input: String,
+    active_task_id: Option<i64>,
+    settings_open: bool,
+    primary_color: Color,
+    is_dark_mode: bool,
+}
+
+pub enum PomimiApp {
+    Loading,
+    Loaded(State),
+    Error(String),
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    // Initialization
+    FontLoaded(Result<(), iced::font::Error>),
+    DbConnected(Result<Database, String>),
+    TasksLoaded(Result<Vec<DbTask>, String>),
+    SessionLoaded(Result<i64, String>),
+    TaskOperationFailed(String),
+    TaskOperationSuccess,
+
     // Timer
     ToggleTimer,
     Tick,
     ResetTimer,
-    SetDuration(Duration),
+    SkipPhase,
 
-    // Todo
-    AddTodo,
-    UpdateNewTodoInput(String),
-    ToggleTodo(usize, bool),
-    DeleteTodo(usize),
-    SwitchList(usize),
-    UpdateNewListInput(String),
-    CreateList,
-    ToggleCreateListMode,
+    // Tasks
+    UpdateNewTaskInput(String),
+    AddTask,
+    DeleteTask(i64),
+    MarkTaskDone(i64),
+    SetActiveTask(i64),
 
-    // App
+    // UI
     ToggleMiniMode,
-    ToggleRunInTerminal(bool),
+    ToggleSettings,
+    SetColor(Color),
+    ToggleTheme,
+
+    None,
 }
 
 impl PomimiApp {
     pub fn new() -> (Self, Task<Message>) {
-        let focus_duration = Duration::from_secs(25 * 60);
-        let break_duration = Duration::from_secs(5 * 60);
+        // Load fonts
+        let fonts = Task::batch(vec![
+            iced::font::load(std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/SpaceGrotesk-Regular.ttf").as_slice())).map(Message::FontLoaded),
+            iced::font::load(std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/SpaceGrotesk-Bold.ttf").as_slice())).map(Message::FontLoaded),
+            iced::font::load(std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/NotoSans-Regular.ttf").as_slice())).map(Message::FontLoaded),
+            iced::font::load(std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/NotoSans-Bold.ttf").as_slice())).map(Message::FontLoaded),
+            iced::font::load(std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/MaterialSymbolsOutlined.ttf").as_slice())).map(Message::FontLoaded),
+        ]);
 
-        // Load config
-        let config = Config::load();
-        let todo_lists = config.todo_lists.clone();
+        let connect_db = Task::perform(
+            async {
+                Database::new().await.map_err(|e| e.to_string())
+            },
+            Message::DbConnected
+        );
 
         (
-            Self {
-                duration: focus_duration,
-                remaining: focus_duration,
-                is_running: false,
-                timer_phase: TimerPhase::Focus,
-                focus_duration,
-                break_duration,
-
-                todo_lists,
-                active_list_index: 0,
-                new_todo_input: String::new(),
-                new_list_input: String::new(),
-                is_creating_list: false,
-                config,
-                view_mode: ViewMode::Full,
-            },
-            Task::none(),
+            PomimiApp::Loading,
+            Task::batch(vec![fonts, connect_db]),
         )
     }
 
     pub fn title(&self) -> String {
-        let mins = self.remaining.as_secs() / 60;
-        let secs = self.remaining.as_secs() % 60;
-        let phase = match self.timer_phase {
-            TimerPhase::Focus => "Focus",
-            TimerPhase::Break => "Break",
-        };
-        format!("Pomimi ({}) - {:02}:{:02}", phase, mins, secs)
+        match self {
+            PomimiApp::Loading => "Pomimi".to_string(),
+            PomimiApp::Error(_) => "Pomimi - Error".to_string(),
+            PomimiApp::Loaded(state) => {
+                let mins = state.timer.remaining_secs / 60;
+                let secs = state.timer.remaining_secs % 60;
+                format!("Pomimi - {:02}:{:02}", mins, secs)
+            }
+        }
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            // Timer Logic
-            Message::ToggleTimer => {
-                self.is_running = !self.is_running;
-                Task::none()
+        match self {
+            PomimiApp::Loading => {
+                match message {
+                    Message::DbConnected(Ok(db)) => {
+                        let load_tasks = Task::perform(
+                            {
+                                let db = db.clone();
+                                async move { db.get_tasks().await.map_err(|e| e.to_string()) }
+                            },
+                            Message::TasksLoaded
+                        );
+                        let load_session = Task::perform(
+                             {
+                                let db = db.clone();
+                                async move { db.get_today_focus_time().await.map_err(|e| e.to_string()) }
+                             },
+                             Message::SessionLoaded
+                        );
+
+                        *self = PomimiApp::Loaded(State {
+                            db,
+                            tasks: Vec::new(),
+                            timer: TimerState::default(),
+                            session_focus_seconds: 0,
+                            view_mode: ViewMode::Full,
+                            new_task_input: String::new(),
+                            active_task_id: None,
+                            settings_open: false,
+                            primary_color: theme::ORANGE, // Default, TODO: Load from DB
+                            is_dark_mode: true,
+                        });
+
+                        Task::batch(vec![load_tasks, load_session])
+                    }
+                    Message::DbConnected(Err(e)) => {
+                        *self = PomimiApp::Error(format!("Failed to connect to database: {}", e));
+                        Task::none()
+                    }
+                    Message::FontLoaded(_) => Task::none(),
+                    _ => Task::none(),
+                }
             }
-            Message::Tick => {
-                if self.is_running {
-                    if self.remaining.as_secs() > 0 {
-                        self.remaining = self.remaining.saturating_sub(Duration::from_secs(1));
-                    } else {
-                        // Timer finished, switch phase
-                        match self.timer_phase {
-                            TimerPhase::Focus => {
-                                self.timer_phase = TimerPhase::Break;
-                                self.duration = self.break_duration;
-                                self.remaining = self.break_duration;
-                            }
-                            TimerPhase::Break => {
-                                self.timer_phase = TimerPhase::Focus;
-                                self.duration = self.focus_duration;
-                                self.remaining = self.focus_duration;
+            PomimiApp::Error(_) => Task::none(),
+            PomimiApp::Loaded(state) => {
+                match message {
+                    Message::TasksLoaded(Ok(tasks)) => {
+                        state.tasks = tasks;
+                        // Auto-select first task if none active?
+                        if state.active_task_id.is_none() && !state.tasks.is_empty() {
+                            state.active_task_id = Some(state.tasks[0].id);
+                        }
+                        Task::none()
+                    }
+                    Message::TasksLoaded(Err(e)) => {
+                        eprintln!("Failed to load tasks: {}", e);
+                        Task::none()
+                    }
+                    Message::SessionLoaded(Ok(secs)) => {
+                        state.session_focus_seconds = secs;
+                        Task::none()
+                    }
+                    Message::SessionLoaded(Err(e)) => {
+                         eprintln!("Failed to load session: {}", e);
+                         Task::none()
+                    }
+                    Message::TaskOperationFailed(e) => {
+                        eprintln!("Task operation failed: {}", e);
+                        Task::none()
+                    }
+                    Message::TaskOperationSuccess => {
+                         let db = state.db.clone();
+                         Task::perform(
+                            async move { db.get_tasks().await.map_err(|e| e.to_string()) },
+                            Message::TasksLoaded
+                        )
+                    }
+
+                    // Timer
+                    Message::ToggleTimer => {
+                        state.timer.is_running = !state.timer.is_running;
+                        Task::none()
+                    }
+                    Message::Tick => {
+                        if state.timer.is_running {
+                            if state.timer.remaining_secs > 0 {
+                                state.timer.remaining_secs -= 1;
+                                if state.timer.phase == Phase::Focus {
+                                    state.session_focus_seconds += 1;
+                                }
+                            } else {
+                                let completed_phase = state.timer.phase.clone();
+                                match completed_phase {
+                                    Phase::Focus => {
+                                        state.timer.cycles_completed += 1;
+                                        let db = state.db.clone();
+                                        let duration = completed_phase.duration_secs() as i64;
+                                        let _ = Task::perform(
+                                            async move { db.add_session(duration).await },
+                                            |_| Message::None
+                                        );
+
+                                        if state.timer.cycles_completed % 4 == 0 {
+                                            state.timer.phase = Phase::LongBreak;
+                                        } else {
+                                            state.timer.phase = Phase::ShortBreak;
+                                        }
+
+                                        // Auto-complete active task? No, user explicitly marks done.
+                                    }
+                                    Phase::ShortBreak | Phase::LongBreak => {
+                                        state.timer.phase = Phase::Focus;
+                                    }
+                                }
+                                state.timer.remaining_secs = state.timer.phase.duration_secs();
+                                state.timer.total_secs = state.timer.phase.duration_secs();
                             }
                         }
-                        // Play sound or notify? (TODO)
+                        Task::none()
                     }
-                }
-                Task::none()
-            }
-            Message::ResetTimer => {
-                self.is_running = false;
-                self.timer_phase = TimerPhase::Focus;
-                self.duration = self.focus_duration;
-                self.remaining = self.focus_duration;
-                Task::none()
-            }
-            Message::SetDuration(d) => {
-                self.focus_duration = d;
-                // Simple logic: Break is 1/5 of focus, minimum 1 min
-                let break_secs = (d.as_secs() / 5).max(60);
-                self.break_duration = Duration::from_secs(break_secs);
-
-                self.timer_phase = TimerPhase::Focus;
-                self.duration = self.focus_duration;
-                self.remaining = self.focus_duration;
-                self.is_running = false;
-                Task::none()
-            }
-
-            // Todo Logic
-            Message::UpdateNewTodoInput(input) => {
-                self.new_todo_input = input;
-                Task::none()
-            }
-            Message::AddTodo => {
-                if !self.new_todo_input.trim().is_empty() {
-                    if let Some(list) = self.todo_lists.get_mut(self.active_list_index) {
-                        let id = list.items.len() as u64; // Simple ID generation
-                        list.items.push(TodoItem {
-                            id,
-                            text: self.new_todo_input.trim().to_string(),
-                            completed: false,
-                        });
-                        self.new_todo_input.clear();
-
-                        // Save config
-                        self.config.todo_lists = self.todo_lists.clone();
-                        self.config.save();
+                    Message::ResetTimer => {
+                        state.timer.is_running = false;
+                        state.timer.phase = Phase::Focus;
+                        state.timer.remaining_secs = Phase::Focus.duration_secs();
+                        state.timer.total_secs = Phase::Focus.duration_secs();
+                        Task::none()
                     }
-                }
-                Task::none()
-            }
-            Message::ToggleTodo(index, is_checked) => {
-                if let Some(list) = self.todo_lists.get_mut(self.active_list_index) {
-                    if let Some(item) = list.items.get_mut(index) {
-                        item.completed = is_checked;
-
-                        // Save config
-                        self.config.todo_lists = self.todo_lists.clone();
-                        self.config.save();
+                    Message::SkipPhase => {
+                         state.timer.remaining_secs = 0;
+                         Task::none()
                     }
-                }
-                Task::none()
-            }
-            Message::DeleteTodo(index) => {
-                if let Some(list) = self.todo_lists.get_mut(self.active_list_index) {
-                    if index < list.items.len() {
-                        list.items.remove(index);
 
-                        // Save config
-                        self.config.todo_lists = self.todo_lists.clone();
-                        self.config.save();
+                    // Tasks
+                    Message::UpdateNewTaskInput(input) => {
+                        state.new_task_input = input;
+                        Task::none()
                     }
-                }
-                Task::none()
-            }
-            Message::SwitchList(index) => {
-                if index < self.todo_lists.len() {
-                    self.active_list_index = index;
-                }
-                Task::none()
-            }
-            Message::UpdateNewListInput(input) => {
-                self.new_list_input = input;
-                Task::none()
-            }
-            Message::ToggleCreateListMode => {
-                self.is_creating_list = !self.is_creating_list;
-                self.new_list_input.clear();
-                Task::none()
-            }
-            Message::CreateList => {
-                 if !self.new_list_input.trim().is_empty() {
-                     self.todo_lists.push(TodoList {
-                         name: self.new_list_input.trim().to_string(),
-                         items: Vec::new(),
-                     });
-                     self.active_list_index = self.todo_lists.len() - 1;
-                     self.is_creating_list = false;
-                     self.new_list_input.clear();
+                    Message::AddTask => {
+                        if !state.new_task_input.trim().is_empty() {
+                            let text = state.new_task_input.trim().to_string();
+                            state.new_task_input.clear();
+                            let db = state.db.clone();
+                            Task::perform(
+                                async move { db.add_task(&text).await.map_err(|e| e.to_string()) },
+                                |res| match res {
+                                    Ok(_) => Message::TaskOperationSuccess,
+                                    Err(e) => Message::TaskOperationFailed(e),
+                                }
+                            )
+                        } else {
+                            Task::none()
+                        }
+                    }
+                    Message::DeleteTask(id) => {
+                        if state.active_task_id == Some(id) {
+                            state.active_task_id = None;
+                        }
+                        let db = state.db.clone();
+                        Task::perform(
+                            async move { db.delete_task(id).await.map_err(|e| e.to_string()) },
+                            |res| match res {
+                                Ok(_) => Message::TaskOperationSuccess,
+                                Err(e) => Message::TaskOperationFailed(e),
+                            }
+                        )
+                    }
+                    Message::MarkTaskDone(id) => {
+                        // Mark done = delete per user request
+                        if state.active_task_id == Some(id) {
+                            state.active_task_id = None;
+                        }
+                         let db = state.db.clone();
+                        Task::perform(
+                            async move { db.delete_task(id).await.map_err(|e| e.to_string()) },
+                             |res| match res {
+                                Ok(_) => Message::TaskOperationSuccess,
+                                Err(e) => Message::TaskOperationFailed(e),
+                            }
+                        )
+                    }
+                    Message::SetActiveTask(id) => {
+                        state.active_task_id = Some(id);
+                        Task::none()
+                    }
 
-                     // Save config
-                     self.config.todo_lists = self.todo_lists.clone();
-                     self.config.save();
-                 }
-                 Task::none()
-            }
+                    // UI
+                    Message::ToggleMiniMode => {
+                        match state.view_mode {
+                            ViewMode::Full => {
+                                state.view_mode = ViewMode::Mini;
+                                window::get_latest().and_then(|id| {
+                                    Task::batch(vec![
+                                        window::resize(id, Size::new(350.0, 320.0)),
+                                        window::change_level(id, window::Level::AlwaysOnTop)
+                                    ])
+                                })
+                            }
+                            ViewMode::Mini => {
+                                state.view_mode = ViewMode::Full;
+                                window::get_latest().and_then(|id| {
+                                    Task::batch(vec![
+                                        window::resize(id, Size::new(800.0, 600.0)),
+                                        window::change_level(id, window::Level::Normal)
+                                    ])
+                                })
+                            }
+                        }
+                    }
+                    Message::ToggleSettings => {
+                        state.settings_open = !state.settings_open;
+                        Task::none()
+                    }
+                    Message::SetColor(color) => {
+                        state.primary_color = color;
+                        // TODO: Persist
+                        Task::none()
+                    }
+                    Message::ToggleTheme => {
+                        state.is_dark_mode = !state.is_dark_mode;
+                        Task::none()
+                    }
 
-            // App Logic
-            Message::ToggleMiniMode => {
-                match self.view_mode {
-                    ViewMode::Full => {
-                        self.view_mode = ViewMode::Mini;
-                        window::get_latest().and_then(|id| {
-                            Task::batch(vec![
-                                window::resize(id, Size::new(350.0, 320.0)),
-                                window::change_level(id, window::Level::AlwaysOnTop)
-                            ])
-                        })
-                    }
-                    ViewMode::Mini => {
-                        self.view_mode = ViewMode::Full;
-                        window::get_latest().and_then(|id| {
-                            Task::batch(vec![
-                                window::resize(id, Size::new(800.0, 600.0)),
-                                window::change_level(id, window::Level::Normal)
-                            ])
-                        })
-                    }
+                    _ => Task::none(),
                 }
-            }
-            Message::ToggleRunInTerminal(val) => {
-                self.config.cli_mode_default = val;
-                self.config.save();
-                Task::none()
             }
         }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let timer_section = self.view_timer();
+        match self {
+            PomimiApp::Loading => center(text("Loading...").size(30)).into(),
+            PomimiApp::Error(e) => center(text(format!("Error: {}", e)).size(20).color(Color::from_rgb(1.0, 0.0, 0.0))).into(),
+            PomimiApp::Loaded(state) => {
+                let timer_view = self.view_timer(state);
 
-        if self.view_mode == ViewMode::Mini {
-            let content = column![
-                timer_section,
-                button(text("Full").color(theme::ACCENT)).style(theme::button_secondary).on_press(Message::ToggleMiniMode)
-            ]
-            .spacing(10)
-            .padding(10)
-            .align_x(iced::Alignment::Center);
+                // Background Text "FOCUS"
+                let background_text = container(
+                    text("FOCUS")
+                        .size(150)
+                        .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                        .color(Color { a: 0.05, ..theme::WHITE })
+                ).align_x(iced::Alignment::Center);
 
-            container(center(content))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(theme::container_default)
-                .into()
-        } else {
-            let todo_section = self.view_todos();
-            let settings_section = self.view_settings();
+                if state.view_mode == ViewMode::Mini {
+                    let active_task_view: Element<'_, Message> = if let Some(id) = state.active_task_id {
+                        if let Some(task) = state.tasks.iter().find(|t| t.id == id) {
+                             container(
+                                 row![
+                                     container(horizontal_space().width(6).height(6))
+                                         .style(|_t: &Theme| container::Style { background: Some(state.primary_color.into()), ..container::Style::default() }),
+                                     column![
+                                         text(&task.text).size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
+                                     ]
+                                 ].spacing(10).align_y(iced::Alignment::Center)
+                             )
+                             .padding(10)
+                             .style(|_t: &Theme| container::Style { background: Some(Color{a:0.05, ..theme::WHITE}.into()), ..container::Style::default() })
+                             .width(Length::Fill)
+                             .into()
+                        } else {
+                            horizontal_space().into()
+                        }
+                    } else {
+                        horizontal_space().into()
+                    };
 
-            let content = column![
-                row![
-                     text("POMIMI").size(20).color(theme::ACCENT),
-                     horizontal_space(),
-                     button(text("Mini").color(theme::ACCENT)).style(theme::button_secondary).on_press(Message::ToggleMiniMode)
-                ].align_y(iced::Alignment::Center).width(Length::Fill),
-                timer_section,
-                horizontal_space(),
-                todo_section,
-                horizontal_space(),
-                settings_section
-            ]
-            .spacing(40)
-            .padding(20)
-            .align_x(iced::Alignment::Center);
+                    let content = column![
+                         timer_view,
+                         active_task_view,
+                         button(text("Expand").size(10)).on_press(Message::ToggleMiniMode).style(theme::button_ghost)
+                    ]
+                    .align_x(iced::Alignment::Center)
+                    .spacing(10)
+                    .padding(10);
 
-            container(center(content))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(theme::container_default)
-                .into()
+                    stack![
+                         container(background_text).width(Length::Fill).height(Length::Fill).align_y(iced::Alignment::Center).align_x(iced::Alignment::Center),
+                         container(content).width(Length::Fill).height(Length::Fill).style(theme::container_default)
+                    ].into()
+
+                } else {
+                    let tasks_view = self.view_tasks(state);
+                    let footer = self.view_footer(state);
+
+                    let main_content = column![
+                        timer_view,
+                        horizontal_space().height(20),
+                        tasks_view,
+                        horizontal_space().height(Length::Fill),
+                        footer
+                    ]
+                    .padding(40)
+                    .max_width(500)
+                    .align_x(iced::Alignment::Center);
+
+                    stack![
+                        container(background_text).width(Length::Fill).height(Length::Fill).padding(20).align_x(iced::Alignment::Center),
+                        container(center(main_content))
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .style(theme::container_default)
+                    ].into()
+                }
+            }
         }
     }
 
-    fn view_timer(&self) -> Element<'_, Message> {
-        let mins = self.remaining.as_secs() / 60;
-        let secs = self.remaining.as_secs() % 60;
+    fn view_timer<'a>(&self, state: &'a State) -> Element<'a, Message> {
+        let mins = state.timer.remaining_secs / 60;
+        let secs = state.timer.remaining_secs % 60;
         let time_str = format!("{:02}:{:02}", mins, secs);
 
-        let progress = 1.0 - (self.remaining.as_secs_f32() / self.duration.as_secs_f32());
+        let label = state.timer.phase.label();
 
-        let time_text_size = if self.view_mode == ViewMode::Mini { 40 } else { 80 };
+        let mut col = column![
+            text(time_str)
+                .size(if state.view_mode == ViewMode::Mini { 60 } else { 100 })
+                .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                .line_height(0.9),
 
-        let phase_text = match self.timer_phase {
-            TimerPhase::Focus => "Focus",
-            TimerPhase::Break => "Break",
-        };
-
-        let display = column![
-            text(phase_text).size(16).color(theme::TEXT_DIM),
-            text(time_str).size(time_text_size).color(theme::PRIMARY),
-            progress_bar(0.0..=1.0, progress)
-                .style(theme::progress_bar_style)
-                .height(10),
             row![
-                button(text(if self.is_running { "PAUSE" } else { "START" }).color(theme::PRIMARY))
-                    .style(theme::button_primary)
-                    .on_press(Message::ToggleTimer),
-                button(text("RESET").color(theme::ACCENT))
-                    .style(theme::button_secondary)
-                    .on_press(Message::ResetTimer),
-            ]
-            .spacing(20),
-        ]
-        .spacing(10)
-        .align_x(iced::Alignment::Center);
+                container(horizontal_space().width(8).height(8))
+                    .style(|_t: &Theme| container::Style {
+                        background: Some(state.primary_color.into()),
+                        border: iced::Border { radius: 4.0.into(), ..iced::Border::default() },
+                        ..container::Style::default()
+                    }),
+                text(label).size(12).font(iced::Font { weight: iced::font::Weight::Medium, ..iced::Font::DEFAULT }).color(theme::TEXT_DIM)
+            ].spacing(8).align_y(iced::Alignment::Center)
+        ].align_x(iced::Alignment::Center);
 
-        if self.view_mode == ViewMode::Full {
-             column![
-                 display,
-                 row![
-                     button(text("25m").color(theme::ACCENT)).on_press(Message::SetDuration(Duration::from_secs(25 * 60))).style(theme::button_secondary),
-                     button(text("5m").color(theme::ACCENT)).on_press(Message::SetDuration(Duration::from_secs(5 * 60))).style(theme::button_secondary),
-                     button(text("15m").color(theme::ACCENT)).on_press(Message::SetDuration(Duration::from_secs(15 * 60))).style(theme::button_secondary),
-                ].spacing(10)
-             ].spacing(20).align_x(iced::Alignment::Center).into()
+        if state.view_mode == ViewMode::Full {
+             col = col.push(horizontal_space().height(20));
+             col = col.push(
+                 button(
+                     row![
+                         text(if state.timer.is_running { "PAUSE FOCUS" } else { "START FOCUS" }).size(14).font(iced::Font::MONOSPACE).color(Color::BLACK),
+                         text("->").size(14).color(Color::BLACK)
+                     ].spacing(10).align_y(iced::Alignment::Center)
+                 )
+                 .width(Length::Fill)
+                 .padding(15)
+                 .style(theme::button_primary)
+                 .on_press(Message::ToggleTimer)
+             );
         } else {
-            display.into()
+             col = col.push(
+                 row![
+                     button(text(if state.timer.is_running { "||" } else { ">" })).on_press(Message::ToggleTimer).style(theme::button_secondary),
+                 ].spacing(10).padding(5)
+             );
         }
+
+        col.into()
     }
 
-    fn view_todos(&self) -> Element<'_, Message> {
-        // List tabs
-        let mut list_tabs = row![].spacing(10);
-        for (i, list) in self.todo_lists.iter().enumerate() {
-            let color = if i == self.active_list_index { theme::PRIMARY } else { theme::ACCENT };
-            let mut btn = button(text(&list.name).size(14).color(color))
-                .on_press(Message::SwitchList(i));
+    fn view_tasks<'a>(&self, state: &'a State) -> Element<'a, Message> {
+        let header = row![
+            text("PRIORITY TASKS").size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }).color(theme::TEXT_DIM),
+            horizontal_space(),
+            text(format!("{} Remaining", state.tasks.len())).size(10).color(theme::TEXT_DIM)
+        ].align_y(iced::Alignment::Center).width(Length::Fill);
 
-            if i == self.active_list_index {
-                btn = btn.style(theme::button_primary);
-            } else {
-                btn = btn.style(theme::button_secondary);
-            }
-            list_tabs = list_tabs.push(btn);
-        }
+        let items: Element<'a, Message> = if state.tasks.is_empty() {
+             text("No active tasks.").size(14).color(theme::TEXT_DIM).into()
+        } else {
+             scrollable(column(
+                 state.tasks.iter().map(|task| {
+                     let is_active = state.active_task_id == Some(task.id);
+                     row![
+                         // Active Toggle
+                         button(
+                             container(horizontal_space().width(8).height(8))
+                                .style(move |_t: &Theme| container::Style { background: Some(if is_active { state.primary_color } else { Color::TRANSPARENT }.into()), ..container::Style::default() })
+                         )
+                         .style(theme::button_secondary)
+                         .width(24).height(24)
+                         .on_press(Message::SetActiveTask(task.id)),
 
-        list_tabs = list_tabs.push(
-            button(text("+").color(theme::ACCENT)).on_press(Message::ToggleCreateListMode).style(theme::button_secondary)
-        );
+                         column![
+                             text(&task.text).size(14).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
+                             text(if is_active { "Active Task" } else { "Focus on this task" }).size(10).color(theme::TEXT_DIM)
+                         ].spacing(2),
 
-        let list_creation = if self.is_creating_list {
-            row![
-                text_input("New List Name", &self.new_list_input)
-                    .on_input(Message::UpdateNewListInput)
-                    .on_submit(Message::CreateList)
-                    .padding(5)
-                    .width(Length::Fixed(150.0)),
-                button(text("Add").color(theme::PRIMARY)).on_press(Message::CreateList).style(theme::button_primary)
-            ].spacing(10)
+                         horizontal_space(),
+
+                         button(text("Done").size(10)).on_press(Message::MarkTaskDone(task.id)).style(theme::button_secondary),
+                         button(text("Scrap").size(10)).on_press(Message::DeleteTask(task.id)).style(theme::button_ghost)
+                     ]
+                     .spacing(15)
+                     .align_y(iced::Alignment::Center)
+                     .padding(10)
+                     .into()
+                 })
+             ).spacing(10)).height(Length::Fill).into()
+        };
+
+        let input = row![
+            text_input("Add a new task...", &state.new_task_input)
+                .on_input(Message::UpdateNewTaskInput)
+                .on_submit(Message::AddTask)
+                .padding(10),
+            button(text("+")).on_press(Message::AddTask).style(theme::button_secondary)
+        ].spacing(10);
+
+        column![
+            header,
+            container(horizontal_space().height(1)).style(|_t: &Theme| container::Style { background: Some(theme::TEXT_DIM.into()), ..container::Style::default() }).width(Length::Fill),
+            items,
+            horizontal_space().height(10),
+            input
+        ].spacing(15).into()
+    }
+
+    fn view_footer<'a>(&self, state: &'a State) -> Element<'a, Message> {
+        let hours = state.session_focus_seconds / 3600;
+        let mins = (state.session_focus_seconds % 3600) / 60;
+
+        let stats = column![
+            text("CURRENT SESSION").size(10).color(theme::TEXT_DIM).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
+            text(format!("{:02}:{:02} Total Focus Time Today", hours, mins)).size(12)
+        ].spacing(2);
+
+        let settings_row = if state.settings_open {
+             row![
+                 button(container(horizontal_space().width(10).height(10)).style(|_: &Theme| container::Style{ background: Some(theme::ORANGE.into()), border: iced::Border{radius: 10.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
+                    .on_press(Message::SetColor(theme::ORANGE)).style(theme::button_ghost),
+                 button(container(horizontal_space().width(10).height(10)).style(|_: &Theme| container::Style{ background: Some(theme::CYAN.into()), border: iced::Border{radius: 10.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
+                    .on_press(Message::SetColor(theme::CYAN)).style(theme::button_ghost),
+                 button(container(horizontal_space().width(10).height(10)).style(|_: &Theme| container::Style{ background: Some(Color::from_rgb(0.5, 0.0, 1.0).into()), border: iced::Border{radius: 10.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
+                    .on_press(Message::SetColor(Color::from_rgb(0.5, 0.0, 1.0))).style(theme::button_ghost),
+             ].spacing(5)
         } else {
             row![].into()
         };
 
-        // Current list items
-        let current_list = &self.todo_lists[self.active_list_index];
-        let items: Element<Message> = if current_list.items.is_empty() {
-             text("No tasks yet. Stay focused!").size(16).color(theme::TEXT_DIM).into()
-        } else {
-            let list_col = column(
-                current_list.items.iter().enumerate().map(|(i, item)| {
-                    row![
-                        checkbox("", item.completed)
-                            .on_toggle(move |checked| Message::ToggleTodo(i, checked)),
-                        text(&item.text).size(18).color(if item.completed { theme::TEXT_DIM } else { theme::TEXT }),
-                        button(text("x").color(theme::ACCENT)).on_press(Message::DeleteTodo(i)).style(theme::button_secondary) // Minimal delete
-                    ]
-                    .spacing(10)
-                    .align_y(iced::Alignment::Center)
-                    .into()
-                })
-            ).spacing(10);
-
-            scrollable(list_col).height(Length::Fixed(200.0)).into()
-        };
-
-        let add_todo_row = row![
-            text_input("Add a new task...", &self.new_todo_input)
-                .on_input(Message::UpdateNewTodoInput)
-                .on_submit(Message::AddTodo)
-                .padding(10),
-            button(text("Add").color(theme::PRIMARY)).on_press(Message::AddTodo).style(theme::button_primary)
-        ].spacing(10);
-
-        column![
-            list_tabs,
-            list_creation,
-            container(items).padding(10).style(theme::container_bordered),
-            add_todo_row
-        ]
-        .spacing(15)
-        .width(Length::Fixed(400.0))
-        .into()
-    }
-
-    fn view_settings(&self) -> Element<'_, Message> {
         row![
-            checkbox("Run in Terminal by Default", self.config.cli_mode_default)
-                .on_toggle(Message::ToggleRunInTerminal),
+            stats,
+            horizontal_space(),
+            settings_row,
+            row![
+                button(text("Contrast")).on_press(Message::ToggleTheme).style(theme::button_secondary).width(60).height(40),
+                button(text("Settings")).on_press(Message::ToggleSettings).style(theme::button_secondary).width(60).height(40),
+            ].spacing(8)
         ]
-        .spacing(20)
+        .align_y(iced::Alignment::End)
+        .width(Length::Fill)
         .into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        if self.is_running {
-            time::every(Duration::from_secs(1)).map(|_| Message::Tick)
-        } else {
-            Subscription::none()
+        match self {
+            PomimiApp::Loaded(state) if state.timer.is_running => {
+                time::every(Duration::from_secs(1)).map(|_| Message::Tick)
+            }
+            _ => Subscription::none(),
         }
     }
 
     pub fn theme(&self) -> Theme {
-        Theme::Dark
+        match self {
+            PomimiApp::Loaded(state) => {
+                theme::create_theme(state.is_dark_mode, state.primary_color)
+            },
+            _ => theme::create_theme(true, theme::ORANGE),
+        }
     }
 }
