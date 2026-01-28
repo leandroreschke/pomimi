@@ -236,7 +236,7 @@ impl PomimiApp {
                         self.view_mode = ViewMode::Mini;
                         window::get_latest().and_then(|id| {
                             Task::batch(vec![
-                                window::resize(id, Size::new(300.0, 150.0)),
+                                window::resize(id, Size::new(350.0, 320.0)),
                                 window::change_level(id, window::Level::AlwaysOnTop)
                             ])
                         })
