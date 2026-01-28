@@ -10,11 +10,20 @@ enum ViewMode {
     Mini,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum TimerPhase {
+    Focus,
+    Break,
+}
+
 pub struct PomimiApp {
     // Timer
     duration: Duration,
     remaining: Duration,
     is_running: bool,
+    timer_phase: TimerPhase,
+    focus_duration: Duration,
+    break_duration: Duration,
 
     // Todo
     todo_lists: Vec<TodoList>,
@@ -53,16 +62,22 @@ pub enum Message {
 
 impl PomimiApp {
     pub fn new() -> (Self, Task<Message>) {
-        let duration = Duration::from_secs(25 * 60);
+        let focus_duration = Duration::from_secs(25 * 60);
+        let break_duration = Duration::from_secs(5 * 60);
+
         // Load config
         let config = Config::load();
         let todo_lists = config.todo_lists.clone();
 
         (
             Self {
-                duration,
-                remaining: duration,
+                duration: focus_duration,
+                remaining: focus_duration,
                 is_running: false,
+                timer_phase: TimerPhase::Focus,
+                focus_duration,
+                break_duration,
+
                 todo_lists,
                 active_list_index: 0,
                 new_todo_input: String::new(),
@@ -78,7 +93,11 @@ impl PomimiApp {
     pub fn title(&self) -> String {
         let mins = self.remaining.as_secs() / 60;
         let secs = self.remaining.as_secs() % 60;
-        format!("Pomimi - {:02}:{:02}", mins, secs)
+        let phase = match self.timer_phase {
+            TimerPhase::Focus => "Focus",
+            TimerPhase::Break => "Break",
+        };
+        format!("Pomimi ({}) - {:02}:{:02}", phase, mins, secs)
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -93,20 +112,40 @@ impl PomimiApp {
                     if self.remaining.as_secs() > 0 {
                         self.remaining = self.remaining.saturating_sub(Duration::from_secs(1));
                     } else {
-                        self.is_running = false;
-                        // TODO: Play sound
+                        // Timer finished, switch phase
+                        match self.timer_phase {
+                            TimerPhase::Focus => {
+                                self.timer_phase = TimerPhase::Break;
+                                self.duration = self.break_duration;
+                                self.remaining = self.break_duration;
+                            }
+                            TimerPhase::Break => {
+                                self.timer_phase = TimerPhase::Focus;
+                                self.duration = self.focus_duration;
+                                self.remaining = self.focus_duration;
+                            }
+                        }
+                        // Play sound or notify? (TODO)
                     }
                 }
                 Task::none()
             }
             Message::ResetTimer => {
                 self.is_running = false;
-                self.remaining = self.duration;
+                self.timer_phase = TimerPhase::Focus;
+                self.duration = self.focus_duration;
+                self.remaining = self.focus_duration;
                 Task::none()
             }
             Message::SetDuration(d) => {
-                self.duration = d;
-                self.remaining = d;
+                self.focus_duration = d;
+                // Simple logic: Break is 1/5 of focus, minimum 1 min
+                let break_secs = (d.as_secs() / 5).max(60);
+                self.break_duration = Duration::from_secs(break_secs);
+
+                self.timer_phase = TimerPhase::Focus;
+                self.duration = self.focus_duration;
+                self.remaining = self.focus_duration;
                 self.is_running = false;
                 Task::none()
             }
@@ -227,7 +266,7 @@ impl PomimiApp {
         if self.view_mode == ViewMode::Mini {
             let content = column![
                 timer_section,
-                button("Full").style(theme::button_secondary).on_press(Message::ToggleMiniMode)
+                button(text("Full").color(theme::ACCENT)).style(theme::button_secondary).on_press(Message::ToggleMiniMode)
             ]
             .spacing(10)
             .padding(10)
@@ -246,7 +285,7 @@ impl PomimiApp {
                 row![
                      text("POMIMI").size(20).color(theme::ACCENT),
                      horizontal_space(),
-                     button("Mini").style(theme::button_secondary).on_press(Message::ToggleMiniMode)
+                     button(text("Mini").color(theme::ACCENT)).style(theme::button_secondary).on_press(Message::ToggleMiniMode)
                 ].align_y(iced::Alignment::Center).width(Length::Fill),
                 timer_section,
                 horizontal_space(),
@@ -275,31 +314,37 @@ impl PomimiApp {
 
         let time_text_size = if self.view_mode == ViewMode::Mini { 40 } else { 80 };
 
+        let phase_text = match self.timer_phase {
+            TimerPhase::Focus => "Focus",
+            TimerPhase::Break => "Break",
+        };
+
         let display = column![
+            text(phase_text).size(16).color(theme::TEXT_DIM),
             text(time_str).size(time_text_size).color(theme::PRIMARY),
             progress_bar(0.0..=1.0, progress)
                 .style(theme::progress_bar_style)
                 .height(10),
             row![
-                button(if self.is_running { "PAUSE" } else { "START" })
+                button(text(if self.is_running { "PAUSE" } else { "START" }).color(theme::PRIMARY))
                     .style(theme::button_primary)
                     .on_press(Message::ToggleTimer),
-                button("RESET")
+                button(text("RESET").color(theme::ACCENT))
                     .style(theme::button_secondary)
                     .on_press(Message::ResetTimer),
             ]
             .spacing(20),
         ]
-        .spacing(20)
+        .spacing(10)
         .align_x(iced::Alignment::Center);
 
         if self.view_mode == ViewMode::Full {
              column![
                  display,
                  row![
-                     button("25m").on_press(Message::SetDuration(Duration::from_secs(25 * 60))).style(theme::button_secondary),
-                     button("5m").on_press(Message::SetDuration(Duration::from_secs(5 * 60))).style(theme::button_secondary),
-                     button("15m").on_press(Message::SetDuration(Duration::from_secs(15 * 60))).style(theme::button_secondary),
+                     button(text("25m").color(theme::ACCENT)).on_press(Message::SetDuration(Duration::from_secs(25 * 60))).style(theme::button_secondary),
+                     button(text("5m").color(theme::ACCENT)).on_press(Message::SetDuration(Duration::from_secs(5 * 60))).style(theme::button_secondary),
+                     button(text("15m").color(theme::ACCENT)).on_press(Message::SetDuration(Duration::from_secs(15 * 60))).style(theme::button_secondary),
                 ].spacing(10)
              ].spacing(20).align_x(iced::Alignment::Center).into()
         } else {
@@ -311,7 +356,8 @@ impl PomimiApp {
         // List tabs
         let mut list_tabs = row![].spacing(10);
         for (i, list) in self.todo_lists.iter().enumerate() {
-            let mut btn = button(text(&list.name).size(14))
+            let color = if i == self.active_list_index { theme::PRIMARY } else { theme::ACCENT };
+            let mut btn = button(text(&list.name).size(14).color(color))
                 .on_press(Message::SwitchList(i));
 
             if i == self.active_list_index {
@@ -323,7 +369,7 @@ impl PomimiApp {
         }
 
         list_tabs = list_tabs.push(
-            button("+").on_press(Message::ToggleCreateListMode).style(theme::button_secondary)
+            button(text("+").color(theme::ACCENT)).on_press(Message::ToggleCreateListMode).style(theme::button_secondary)
         );
 
         let list_creation = if self.is_creating_list {
@@ -333,7 +379,7 @@ impl PomimiApp {
                     .on_submit(Message::CreateList)
                     .padding(5)
                     .width(Length::Fixed(150.0)),
-                button("Add").on_press(Message::CreateList).style(theme::button_primary)
+                button(text("Add").color(theme::PRIMARY)).on_press(Message::CreateList).style(theme::button_primary)
             ].spacing(10)
         } else {
             row![].into()
@@ -350,7 +396,7 @@ impl PomimiApp {
                         checkbox("", item.completed)
                             .on_toggle(move |checked| Message::ToggleTodo(i, checked)),
                         text(&item.text).size(18).color(if item.completed { theme::TEXT_DIM } else { theme::TEXT }),
-                        button("x").on_press(Message::DeleteTodo(i)).style(theme::button_secondary) // Minimal delete
+                        button(text("x").color(theme::ACCENT)).on_press(Message::DeleteTodo(i)).style(theme::button_secondary) // Minimal delete
                     ]
                     .spacing(10)
                     .align_y(iced::Alignment::Center)
@@ -366,7 +412,7 @@ impl PomimiApp {
                 .on_input(Message::UpdateNewTodoInput)
                 .on_submit(Message::AddTodo)
                 .padding(10),
-            button("Add").on_press(Message::AddTodo).style(theme::button_primary)
+            button(text("Add").color(theme::PRIMARY)).on_press(Message::AddTodo).style(theme::button_primary)
         ].spacing(10);
 
         column![
