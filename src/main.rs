@@ -107,7 +107,12 @@ impl Rgb {
     }
 }
 
-fn clear_screen() {
+fn reset_cursor_position() {
+    print!("\x1b[H");
+    io::stdout().flush().unwrap();
+}
+
+fn full_clear_screen() {
     print!("\x1b[2J\x1b[H");
     io::stdout().flush().unwrap();
 }
@@ -145,7 +150,7 @@ fn draw_progress_bar(width: usize, progress: f32, start_color: Rgb, end_color: R
     
     // Print percentage at the end
     let percent = (progress * 100.0) as usize;
-    print!("\x1b[0m\x1b[2m{:>3}%\x1b[0m", percent); 
+    print!("\x1b[0m\x1b[2m{:>3}%\x1b[0m\x1b[K", percent);
     
     io::stdout().flush().unwrap();
 }
@@ -176,6 +181,7 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
     let predicted_end_str = get_future_time_str(duration.as_secs());
 
     hide_cursor();
+    full_clear_screen();
 
     loop {
         let elapsed = start_instant.elapsed();
@@ -186,14 +192,14 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
         let remaining = duration - elapsed;
         let progress = elapsed.as_secs_f32() / duration.as_secs_f32();
 
-        clear_screen();
+        reset_cursor_position();
         // Top Left: Start Time (No label)
-        println!("\x1b[2m{}\x1b[0m\n", start_time_str);
+        println!("\x1b[2m{}\x1b[0m\x1b[K\n", start_time_str);
 
-        println!("\x1b[2mPOMIMI: {}\x1b[0m", label);
+        println!("\x1b[2mPOMIMI: {}\x1b[0m\x1b[K", label);
         
         // Time Remaining with Predicted End on Left (No label for End)
-        println!("\x1b[2m{}  Time Remaining: {}\x1b[0m\n", predicted_end_str, format_duration(remaining));
+        println!("\x1b[2m{}  Time Remaining: {}\x1b[0m\x1b[K\n", predicted_end_str, format_duration(remaining));
         
         draw_progress_bar(width, progress, indigo, orange);
         
@@ -201,10 +207,10 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
     }
     
     // Final state
-    clear_screen();
-    println!("\x1b[2m{}\x1b[0m\n", start_time_str);
-    println!("\x1b[2mPOMIMI: {} - DONE!\x1b[0m", label);
-    println!("\x1b[2m{}  Time Remaining: 00:00\x1b[0m\n", predicted_end_str);
+    reset_cursor_position();
+    println!("\x1b[2m{}\x1b[0m\x1b[K\n", start_time_str);
+    println!("\x1b[2mPOMIMI: {} - DONE!\x1b[0m\x1b[K", label);
+    println!("\x1b[2m{}  Time Remaining: 00:00\x1b[0m\x1b[K\n", predicted_end_str);
     draw_progress_bar(width, 1.0, indigo, orange);
     println!("\n");
     
@@ -252,10 +258,11 @@ fn main() {
     };
 
     hide_cursor();
+    full_clear_screen();
     
     loop {
-        clear_screen();
-        println!("\x1b[2mChoose a POMIMI time:\x1b[0m\n");
+        reset_cursor_position();
+        println!("\x1b[2mChoose a POMIMI time:\x1b[0m\x1b[K\n");
 
         let items_display = [
             "25/5 Classic",
@@ -266,13 +273,13 @@ fn main() {
 
         for (i, label) in items_display.iter().enumerate() {
             if i == selection {
-                println!("> {} \x1b[32m[Selected]\x1b[0m", label);
+                println!("> {} \x1b[32m[Selected]\x1b[0m\x1b[K", label);
             } else {
-                println!("  {}", label);
+                println!("  {}\x1b[K", label);
             }
         }
         
-        println!("\n\x1b[2m(Use j/k/arrows to move, Enter/A to select)\x1b[0m");
+        println!("\n\x1b[2m(Use j/k/arrows to move, Enter/A to select)\x1b[0m\x1b[K");
 
         io::stdout().flush().unwrap();
 
