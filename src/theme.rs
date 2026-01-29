@@ -11,6 +11,7 @@ pub const MUTED_GRAY: Color = Color::from_rgb(0.2, 0.2, 0.2); // #333333
 pub const TEXT_DIM: Color = Color::from_rgb(0.5, 0.5, 0.5);
 pub const CYAN: Color = Color::from_rgb(0.0, 1.0, 1.0);
 
+#[allow(dead_code)]
 pub const PRIMARY: Color = ORANGE;
 
 pub fn create_theme(dark_mode: bool, primary: Color) -> Theme {
@@ -97,6 +98,7 @@ pub fn button_secondary(theme: &Theme, status: button::Status) -> button::Style 
 }
 
 // Minimal/Ghost button
+#[allow(dead_code)]
 pub fn button_ghost(theme: &Theme, status: button::Status) -> button::Style {
     let palette = theme.palette();
     let base = button::Style {
@@ -115,10 +117,12 @@ pub fn button_ghost(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+#[allow(dead_code)]
 pub fn button_outline(theme: &Theme, status: button::Status) -> button::Style {
     button_secondary(theme, status)
 }
 
+#[allow(dead_code)]
 pub fn progress_bar_style(theme: &Theme) -> progress_bar::Style {
     let palette = theme.palette();
     progress_bar::Style {

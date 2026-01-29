@@ -89,7 +89,9 @@ pub enum Message {
     // Timer
     ToggleTimer,
     Tick,
+    #[allow(dead_code)]
     ResetTimer,
+    #[allow(dead_code)]
     SkipPhase,
 
     // Tasks

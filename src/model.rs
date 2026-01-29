@@ -7,7 +7,9 @@ use chrono;
 pub struct Task {
     pub id: i64,
     pub text: String,
+    #[allow(dead_code)]
     pub completed: bool,
+    #[allow(dead_code)]
     pub created_at: i64,
 }
 
@@ -90,6 +92,7 @@ impl Database {
     }
 
     // Preferences
+    #[allow(dead_code)]
     pub async fn get_preference(&self, key: &str) -> Result<Option<String>, sqlx::Error> {
         let row = sqlx::query("SELECT value FROM preferences WHERE key = ?")
             .bind(key)
@@ -99,6 +102,7 @@ impl Database {
         Ok(row.map(|r| r.get("value")))
     }
 
+    #[allow(dead_code)]
     pub async fn set_preference(&self, key: &str, value: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO preferences (key, value) VALUES (?, ?)
@@ -126,7 +130,7 @@ impl Database {
 
     pub async fn get_today_focus_time(&self) -> Result<i64, sqlx::Error> {
         // Start of today
-        let today = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().timestamp();
+        let today = chrono::Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
 
         // Use query_scalar to get a single value (Option<i64> because SUM can be NULL)
         let result: Option<i64> = sqlx::query_scalar(
