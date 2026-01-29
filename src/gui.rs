@@ -36,12 +36,12 @@ pub enum Modal {
 }
 
 #[derive(Debug, Clone)]
-struct TimerState {
-    phase: Phase,
-    remaining_secs: u64,
-    total_secs: u64,
-    is_running: bool,
-    cycles_completed: usize,
+pub struct TimerState {
+    pub phase: Phase,
+    pub remaining_secs: u64,
+    pub total_secs: u64,
+    pub is_running: bool,
+    pub cycles_completed: usize,
 }
 
 impl Default for TimerState {
@@ -58,16 +58,16 @@ impl Default for TimerState {
 
 #[derive(Debug, Clone)]
 pub struct State {
-    db: Database,
-    tasks: Vec<DbTask>,
-    timer: TimerState,
-    session_focus_seconds: i64,
-    view_mode: ViewMode,
-    new_task_input: String,
-    active_task_id: Option<i64>,
-    active_modal: Modal,
-    primary_color: Color,
-    is_dark_mode: bool,
+    pub db: Database,
+    pub tasks: Vec<DbTask>,
+    pub timer: TimerState,
+    pub session_focus_seconds: i64,
+    pub view_mode: ViewMode,
+    pub new_task_input: String,
+    pub active_task_id: Option<i64>,
+    pub active_modal: Modal,
+    pub primary_color: Color,
+    pub is_dark_mode: bool,
 }
 
 pub enum PomimiApp {
@@ -544,80 +544,7 @@ impl PomimiApp {
     }
 
     fn view_timer<'a>(&self, state: &'a State) -> Element<'a, Message> {
-        let mins = state.timer.remaining_secs / 60;
-        let secs = state.timer.remaining_secs % 60;
-        let time_str = format!("{:02}:{:02}", mins, secs);
-
-        let phase_label = match state.timer.phase {
-            Phase::Focus => "FOCUS",
-            Phase::ShortBreak | Phase::LongBreak => "REST",
-        };
-
-        let timer_display: Element<'a, Message> = if state.view_mode == ViewMode::Full {
-            container(
-                stack![
-                    container(
-                        text(phase_label)
-                            .size(80)
-                            .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Black, ..iced::Font::DEFAULT })
-                            .color(Color { a: 0.05, ..if state.is_dark_mode { theme::WHITE } else { theme::DARK_BG } })
-                    )
-                    .align_x(iced::Alignment::Center)
-                    .align_y(iced::Alignment::Start)
-                    .padding(iced::Padding { top: 4.0, right: 0.0, bottom: 0.0, left: 0.0 })
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-                    container(
-                        text(time_str)
-                            .size(100)
-                            .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
-                            .line_height(0.9)
-                    )
-                    .align_x(iced::Alignment::Center)
-                    .align_y(iced::Alignment::Center)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                ]
-            )
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 })
-            .into()
-        } else {
-            text(time_str)
-                .size(60)
-                .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
-                .line_height(0.9)
-                .into()
-        };
-
-        let mut col = column![timer_display].align_x(iced::Alignment::Center);
-
-        // Show strategy buttons only if NOT running
-        if !state.timer.is_running && state.view_mode == ViewMode::Full {
-             col = col.push(
-                 row![
-                     button(text("25/5").size(12)).on_press(Message::SetDuration(25*60)).style(components::button::secondary).padding(5),
-                     button(text("50/10").size(12)).on_press(Message::SetDuration(50*60)).style(components::button::secondary).padding(5),
-                 ].spacing(10).padding(10)
-             );
-        }
-
-        if state.view_mode == ViewMode::Full {
-             col = col.push(Space::new().height(20));
-             col = col.push(
-                 button(
-                     row![
-                         text(if state.timer.is_running { "PAUSE FOCUS" } else { "START FOCUS" }).size(14).font(iced::Font::MONOSPACE).color(Color::BLACK),
-                         text("\u{e5c8}").font(iced::Font::with_name("Material Symbols Outlined")).size(14).color(Color::BLACK) // arrow_forward
-                     ].spacing(10).align_y(iced::Alignment::Center)
-                 )
-                 .width(Length::Fill)
-                 .padding(15)
-                 .style(components::button::primary)
-                 .on_press(Message::ToggleTimer)
-             );
-        }
-
-        col.into()
+        components::timer::timer_display(state)
     }
 
     fn view_tasks<'a>(&self, state: &'a State) -> Element<'a, Message> {
