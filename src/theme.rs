@@ -22,6 +22,7 @@ pub fn create_theme(dark_mode: bool, primary: Color) -> Theme {
             primary,
             success: Color::from_rgb(0.0, 1.0, 0.0),
             danger: Color::from_rgb(1.0, 0.0, 0.0),
+            warning: Color::from_rgb(1.0, 0.8, 0.0),
         }
     } else {
         Palette {
@@ -30,6 +31,7 @@ pub fn create_theme(dark_mode: bool, primary: Color) -> Theme {
             primary,
             success: Color::from_rgb(0.0, 0.8, 0.0),
             danger: Color::from_rgb(0.8, 0.0, 0.0),
+            warning: Color::from_rgb(0.9, 0.7, 0.0),
         }
     };
 

@@ -29,9 +29,14 @@ fn main() -> iced::Result {
         cli::run();
         Ok(())
     } else {
-        iced::application(PomimiApp::title, PomimiApp::update, PomimiApp::view)
+        iced::application(PomimiApp::new, PomimiApp::update, PomimiApp::view)
+            .title(PomimiApp::title)
             .theme(PomimiApp::theme)
             .subscription(PomimiApp::subscription)
-            .run_with(PomimiApp::new)
+            .window(iced::window::Settings {
+                size: iced::Size::new(380.0, 800.0),
+                ..Default::default()
+            })
+            .run()
     }
 }

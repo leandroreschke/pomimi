@@ -1,5 +1,5 @@
 use iced::{Element, Task, Theme, Subscription, time, Length, window, Size, Color};
-use iced::widget::{column, container, text, button, center, row, text_input, scrollable, horizontal_space, stack};
+use iced::widget::{column, container, text, button, center, row, text_input, scrollable, Space, stack};
 use crate::theme;
 use crate::model::{Database, Task as DbTask};
 use std::time::Duration;
@@ -357,19 +357,29 @@ impl PomimiApp {
                         match state.view_mode {
                             ViewMode::Full => {
                                 state.view_mode = ViewMode::Mini;
-                                window::get_latest().and_then(|id| {
+                                let mini_size = Size::new(270.0, 120.0);
+                                // Assume 1920x1080 or use a reasonable default for positioning
+                                // In iced 0.13, there's no direct way to get monitor size at runtime
+                                let x = 1920.0 - mini_size.width - 20.0; // Assume standard monitor width
+                                let y = 20.0;
+                                window::latest().and_then(move |id| {
                                     Task::batch(vec![
-                                        window::resize(id, Size::new(350.0, 320.0)),
-                                        window::change_level(id, window::Level::AlwaysOnTop)
+                                        window::resize(id, mini_size),
+                                        window::set_level(id, window::Level::AlwaysOnTop),
+                                        window::toggle_decorations(id),
+                                        window::set_resizable(id, false),
+                                        window::move_to(id, iced::Point::new(x, y))
                                     ])
                                 })
                             }
                             ViewMode::Mini => {
                                 state.view_mode = ViewMode::Full;
-                                window::get_latest().and_then(|id| {
+                                window::latest().and_then(|id| {
                                     Task::batch(vec![
-                                        window::resize(id, Size::new(800.0, 600.0)),
-                                        window::change_level(id, window::Level::Normal)
+                                        window::resize(id, Size::new(380.0, 800.0)),
+                                        window::set_level(id, window::Level::Normal),
+                                        window::toggle_decorations(id),
+                                        window::set_resizable(id, true)
                                     ])
                                 })
                             }
@@ -419,7 +429,7 @@ impl PomimiApp {
                         if let Some(task) = state.tasks.iter().find(|t| t.id == id) {
                              container(
                                  row![
-                                     container(horizontal_space().width(6).height(6))
+                                     container(Space::new().width(6).height(6))
                                          .style(|_t: &Theme| container::Style { background: Some(state.primary_color.into()), ..container::Style::default() }),
                                      column![
                                          text(&task.text).size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
@@ -431,18 +441,25 @@ impl PomimiApp {
                              .width(Length::Fill)
                              .into()
                         } else {
-                            horizontal_space().into()
+                            Space::new().width(Length::Fill).into()
                         }
                     } else {
-                        horizontal_space().into()
+                        Space::new().width(Length::Fill).into()
                     };
 
                     column![
-                         timer_view,
-                         active_task_view,
-                         button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // open_in_new / open_in_full icon
-                            .on_press(Message::ToggleMiniMode)
-                            .style(theme::button_ghost)
+                        // Timer + play/pause + exit button in row
+                        row![
+                            timer_view,
+                            Space::new().width(Length::Fill),
+                            button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined"))) // pause / play_arrow
+                                .on_press(Message::ToggleTimer).style(theme::button_secondary),
+                            button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // open_in_new / open_in_full icon
+                                .on_press(Message::ToggleMiniMode)
+                                .style(theme::button_ghost)
+                        ].width(Length::Fill).align_y(iced::Alignment::Center),
+                        // Focused task below
+                        active_task_view,
                     ]
                     .align_x(iced::Alignment::Center)
                     .spacing(10)
@@ -455,9 +472,8 @@ impl PomimiApp {
 
                     let main_content = column![
                         timer_view,
-                        horizontal_space().height(20),
+                        Space::new().height(20),
                         tasks_view,
-                        horizontal_space().height(Length::Fill),
                         footer
                     ]
                     .padding(40)
@@ -494,11 +510,11 @@ impl PomimiApp {
                                 text("Settings").size(18).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
                                 text("Accent Color").size(14),
                                 row![
-                                     button(container(horizontal_space().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::ORANGE.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
+                                     button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::ORANGE.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
                                         .on_press(Message::SetColor(theme::ORANGE)).style(theme::button_ghost),
-                                     button(container(horizontal_space().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::CYAN.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
+                                     button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::CYAN.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
                                         .on_press(Message::SetColor(theme::CYAN)).style(theme::button_ghost),
-                                     button(container(horizontal_space().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(Color::from_rgb(0.5, 0.0, 1.0).into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
+                                     button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(Color::from_rgb(0.5, 0.0, 1.0).into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
                                         .on_press(Message::SetColor(Color::from_rgb(0.5, 0.0, 1.0))).style(theme::button_ghost),
                                  ].spacing(10),
                                  button(text("Close")).on_press(Message::CloseModal).style(theme::button_secondary).width(Length::Fill)
@@ -560,7 +576,7 @@ impl PomimiApp {
         }
 
         if state.view_mode == ViewMode::Full {
-             col = col.push(horizontal_space().height(20));
+             col = col.push(Space::new().height(20));
              col = col.push(
                  button(
                      row![
@@ -573,13 +589,6 @@ impl PomimiApp {
                  .style(theme::button_primary)
                  .on_press(Message::ToggleTimer)
              );
-        } else {
-             col = col.push(
-                 row![
-                     button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined"))) // pause / play_arrow
-                        .on_press(Message::ToggleTimer).style(theme::button_secondary),
-                 ].spacing(10).padding(5)
-             );
         }
 
         col.into()
@@ -588,7 +597,7 @@ impl PomimiApp {
     fn view_tasks<'a>(&self, state: &'a State) -> Element<'a, Message> {
         let header = row![
             text("PRIORITY TASKS").size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }).color(theme::TEXT_DIM),
-            horizontal_space(),
+            Space::new().width(Length::Fill),
             button(text("+").size(14)).on_press(Message::OpenModal(Modal::AddTask)).style(theme::button_ghost)
         ].align_y(iced::Alignment::Center).width(Length::Fill);
 
@@ -601,7 +610,7 @@ impl PomimiApp {
                      row![
                          // Checkbox Square (using button for now)
                          button(
-                             container(horizontal_space().width(8).height(8))
+                             container(Space::new().width(8).height(8))
                                 .style(move |_t: &Theme| container::Style { background: Some(if is_active { state.primary_color } else { Color::TRANSPARENT }.into()), ..container::Style::default() })
                          )
                          .style(theme::button_secondary)
@@ -639,7 +648,7 @@ impl PomimiApp {
 
         column![
             header,
-            container(horizontal_space().height(1)).style(|_t: &Theme| container::Style { background: Some(theme::TEXT_DIM.into()), ..container::Style::default() }).width(Length::Fill),
+            container(Space::new().height(1)).style(|_t: &Theme| container::Style { background: Some(theme::TEXT_DIM.into()), ..container::Style::default() }).width(Length::Fill),
             items,
         ].spacing(15).into()
     }
@@ -655,7 +664,7 @@ impl PomimiApp {
 
         row![
             stats,
-            horizontal_space(),
+            Space::new().width(Length::Fill),
             row![
                 // Contrast Icon
                 button(text("\u{e3a1}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)) // contrast
