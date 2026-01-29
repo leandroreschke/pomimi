@@ -171,7 +171,6 @@ pub struct State {
     pub primary_color: Color,
     pub is_dark_mode: bool,
     pub require_confirmation: bool,
-    pub screen_resolution: Option<Size>,
 }
 
 pub enum PomimiApp {
@@ -189,7 +188,6 @@ pub enum Message {
     SessionLoaded(Result<i64, String>),
     ColorLoaded(Result<Option<(f32, f32, f32)>, String>),
     RequireConfirmationLoaded(Result<bool, String>),
-    ScreenResolutionDetected(Option<Size>),
     TaskOperationFailed(String),
     TaskOperationSuccess,
 
@@ -213,6 +211,7 @@ pub enum Message {
     SetColor(Color),
     SetRequireConfirmation(bool),
     ToggleTheme,
+    DragWindow,
 
     None,
 }
@@ -291,11 +290,6 @@ impl PomimiApp {
                              Message::RequireConfirmationLoaded
                         );
 
-                        let detect_res = Task::perform(
-                            async { get_screen_resolution() },
-                            Message::ScreenResolutionDetected
-                        );
-
                         *self = PomimiApp::Loaded(State {
                             db,
                             tasks: Vec::new(),
@@ -309,10 +303,9 @@ impl PomimiApp {
                             primary_color: theme::ORANGE,
                             is_dark_mode: true,
                             require_confirmation: false,
-                            screen_resolution: None,
                         });
 
-                        Task::batch(vec![load_tasks, load_session, load_color, load_req_conf, detect_res])
+                        Task::batch(vec![load_tasks, load_session, load_color, load_req_conf])
                     }
                     Message::DbConnected(Err(e)) => {
                         *self = PomimiApp::Error(format!("Failed to connect to database: {}", e));
@@ -361,10 +354,6 @@ impl PomimiApp {
                     }
                     Message::RequireConfirmationLoaded(Err(e)) => {
                         eprintln!("Failed to load require confirmation: {}", e);
-                        Task::none()
-                    }
-                    Message::ScreenResolutionDetected(res) => {
-                        state.screen_resolution = res;
                         Task::none()
                     }
                     Message::TaskOperationFailed(e) => {
@@ -515,8 +504,7 @@ impl PomimiApp {
                             ViewMode::Full => {
                                 state.view_mode = ViewMode::Mini;
                                 let mini_size = Size::new(270.0, 120.0);
-                                let screen_width = state.screen_resolution.map(|s| s.width).unwrap_or(1920.0);
-                                let x = screen_width - mini_size.width - 20.0;
+                                let x = 20.0;
                                 let y = 20.0;
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
@@ -583,6 +571,9 @@ impl PomimiApp {
                         state.is_dark_mode = !state.is_dark_mode;
                         Task::none()
                     }
+                    Message::DragWindow => {
+                        window::latest().and_then(window::drag)
+                    }
 
                     _ => Task::none(),
                 }
@@ -646,25 +637,33 @@ impl PomimiApp {
                         }
                     };
 
-                    column![
-                        // Timer + play/pause + exit button in row
-                        row![
-                            timer_view,
-                            button(text(
-                                if state.timer.waiting_for_user { "\u{e5c8}" }
-                                else if state.timer.is_running { "\u{e034}" }
-                                else { "\u{e037}" }
-                            ).font(iced::Font::with_name("Material Symbols Outlined")))
-                                .on_press(Message::ToggleTimer).style(components::button::secondary),
-                            button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
-                                .on_press(Message::ToggleMiniMode)
-                                .style(components::button::tertiary)
-                        ].width(Length::Fill).align_y(iced::Alignment::Center),
-                        active_task_view,
-                    ]
-                    .align_x(iced::Alignment::Center)
-                    .spacing(10)
-                    .padding(10)
+                    iced::widget::mouse_area(
+                        container(
+                            column![
+                                // Timer + play/pause + exit button in row
+                                row![
+                                    timer_view,
+                                    button(text(
+                                        if state.timer.waiting_for_user { "\u{e5c8}" }
+                                        else if state.timer.is_running { "\u{e034}" }
+                                        else { "\u{e037}" }
+                                    ).font(iced::Font::with_name("Material Symbols Outlined")))
+                                        .on_press(Message::ToggleTimer).style(components::button::secondary),
+                                    button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
+                                        .on_press(Message::ToggleMiniMode)
+                                        .style(components::button::tertiary)
+                                ].width(Length::Fill).align_y(iced::Alignment::Center),
+                                active_task_view,
+                            ]
+                            .align_x(iced::Alignment::Center)
+                            .spacing(10)
+                            .padding(10)
+                        )
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .style(theme::container_default)
+                    )
+                    .on_press(Message::DragWindow)
                     .into()
 
                 } else {
@@ -892,103 +891,4 @@ impl PomimiApp {
             _ => theme::create_theme(true, theme::ORANGE),
         }
     }
-}
-
-fn get_screen_resolution() -> Option<Size> {
-    #[cfg(target_os = "macos")]
-    {
-        // Use system_profiler
-        let output = std::process::Command::new("system_profiler")
-            .arg("SPDisplaysDataType")
-            .output()
-            .ok()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        for line in stdout.lines() {
-            if line.trim().starts_with("Resolution:") {
-                // Resolution: 3456 x 2234
-                // Resolution: 1920 x 1080
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if let Some(pos) = parts.iter().position(|&p| p == "x") {
-                    if pos > 1 {
-                        let w_str = parts[pos - 1];
-                        let h_str = parts[pos + 1];
-                        if let (Ok(w), Ok(h)) = (w_str.parse::<f32>(), h_str.parse::<f32>()) {
-                            // If retina, this might be physical pixels, not logical points.
-                            // Iced uses logical points. Usually macOS scales 2x.
-                            // This is a rough heuristic. For precise positioning, we might need to assume
-                            // this is correct or divide by scale factor if we could detect it.
-                            // For now, let's return raw values and hope for the best or assume 1:1 if not detected.
-                            // Actually, system_profiler usually reports physical pixels.
-                            // A better command for logical size: osascript
-                            return Some(Size::new(w, h));
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback: osascript
-         let output = std::process::Command::new("osascript")
-            .args(&["-e", "tell application \"Finder\" to get bounds of window of desktop"])
-            .output()
-            .ok()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        // "0, 0, 1920, 1080"
-        let parts: Vec<&str> = stdout.trim().split(',').collect();
-        if parts.len() == 4 {
-             if let (Ok(x2), Ok(y2)) = (parts[2].trim().parse::<f32>(), parts[3].trim().parse::<f32>()) {
-                 return Some(Size::new(x2, y2));
-             }
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Use xrandr
-        let output = std::process::Command::new("xrandr")
-            .output()
-            .ok()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        // Look for line with * (current mode)
-        for line in stdout.lines() {
-            if line.contains('*') {
-                // "   1920x1080     60.00*+"
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if !parts.is_empty() {
-                    let res_str = parts[0]; // 1920x1080
-                    let dims: Vec<&str> = res_str.split('x').collect();
-                    if dims.len() == 2 {
-                        if let (Ok(w), Ok(h)) = (dims[0].parse::<f32>(), dims[1].parse::<f32>()) {
-                            return Some(Size::new(w, h));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // Use wmic
-        let output = std::process::Command::new("wmic")
-            .args(&["path", "Win32_VideoController", "get", "CurrentHorizontalResolution,CurrentVerticalResolution"])
-            .output()
-            .ok()?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut lines = stdout.lines();
-        // Header
-        let _ = lines.next();
-        // Values
-        if let Some(line) = lines.next() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                 if let (Ok(w), Ok(h)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>()) {
-                     return Some(Size::new(w, h));
-                 }
-            }
-        }
-    }
-
-    None
 }
