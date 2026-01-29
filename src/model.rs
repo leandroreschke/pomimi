@@ -118,4 +118,37 @@ impl Database {
 
         Ok(result.unwrap_or(0))
     }
+
+    pub async fn save_accent_color(&self, r: f32, g: f32, b: f32) -> Result<(), sqlx::Error> {
+        let color_value = format!("{},{},{}", r, g, b);
+        sqlx::query(
+            "INSERT OR REPLACE INTO preferences (key, value) VALUES ('accent_color', ?)"
+        )
+        .bind(color_value)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_accent_color(&self) -> Result<Option<(f32, f32, f32)>, sqlx::Error> {
+        let result: Option<String> = sqlx::query_scalar(
+            "SELECT value FROM preferences WHERE key = 'accent_color'"
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(color_str) = result {
+            let parts: Vec<&str> = color_str.split(',').collect();
+            if parts.len() == 3 {
+                if let (Ok(r), Ok(g), Ok(b)) = (
+                    parts[0].parse::<f32>(),
+                    parts[1].parse::<f32>(),
+                    parts[2].parse::<f32>(),
+                ) {
+                    return Ok(Some((r, g, b)));
+                }
+            }
+        }
+        Ok(None)
+    }
 }

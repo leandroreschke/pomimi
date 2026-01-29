@@ -2,6 +2,7 @@ mod cli;
 mod model;
 mod gui;
 mod theme;
+mod components;
 
 use std::env;
 use gui::PomimiApp;
@@ -29,12 +30,16 @@ fn main() -> iced::Result {
         cli::run();
         Ok(())
     } else {
+        let icon_bytes = include_bytes!("../assets/images/POMIMI_LOGO.png");
+        let icon = iced::window::icon::from_file_data(icon_bytes, None).ok();
+
         iced::application(PomimiApp::new, PomimiApp::update, PomimiApp::view)
             .title(PomimiApp::title)
             .theme(PomimiApp::theme)
             .subscription(PomimiApp::subscription)
             .window(iced::window::Settings {
                 size: iced::Size::new(380.0, 800.0),
+                icon,
                 ..Default::default()
             })
             .run()

@@ -2,6 +2,7 @@ use iced::{Element, Task, Theme, Subscription, time, Length, window, Size, Color
 use iced::widget::{column, container, text, button, center, row, text_input, scrollable, Space, stack};
 use crate::theme;
 use crate::model::{Database, Task as DbTask};
+use crate::components;
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,12 +36,12 @@ pub enum Modal {
 }
 
 #[derive(Debug, Clone)]
-struct TimerState {
-    phase: Phase,
-    remaining_secs: u64,
-    total_secs: u64,
-    is_running: bool,
-    cycles_completed: usize,
+pub struct TimerState {
+    pub phase: Phase,
+    pub remaining_secs: u64,
+    pub total_secs: u64,
+    pub is_running: bool,
+    pub cycles_completed: usize,
 }
 
 impl Default for TimerState {
@@ -57,16 +58,16 @@ impl Default for TimerState {
 
 #[derive(Debug, Clone)]
 pub struct State {
-    db: Database,
-    tasks: Vec<DbTask>,
-    timer: TimerState,
-    session_focus_seconds: i64,
-    view_mode: ViewMode,
-    new_task_input: String,
-    active_task_id: Option<i64>,
-    active_modal: Modal,
-    primary_color: Color,
-    is_dark_mode: bool,
+    pub db: Database,
+    pub tasks: Vec<DbTask>,
+    pub timer: TimerState,
+    pub session_focus_seconds: i64,
+    pub view_mode: ViewMode,
+    pub new_task_input: String,
+    pub active_task_id: Option<i64>,
+    pub active_modal: Modal,
+    pub primary_color: Color,
+    pub is_dark_mode: bool,
 }
 
 pub enum PomimiApp {
@@ -82,6 +83,7 @@ pub enum Message {
     DbConnected(Result<Database, String>),
     TasksLoaded(Result<Vec<DbTask>, String>),
     SessionLoaded(Result<i64, String>),
+    ColorLoaded(Result<Option<(f32, f32, f32)>, String>),
     TaskOperationFailed(String),
     TaskOperationSuccess,
 
@@ -162,6 +164,15 @@ impl PomimiApp {
                              },
                              Message::SessionLoaded
                         );
+                        let load_color = Task::perform(
+                             {
+                                let db = db.clone();
+                                async move { 
+                                    db.get_accent_color().await.map_err(|e| e.to_string())
+                                }
+                             },
+                             Message::ColorLoaded
+                        );
 
                         *self = PomimiApp::Loaded(State {
                             db,
@@ -172,11 +183,11 @@ impl PomimiApp {
                             new_task_input: String::new(),
                             active_task_id: None,
                             active_modal: Modal::None,
-                            primary_color: theme::ORANGE, // Default, TODO: Load from DB
+                            primary_color: theme::ORANGE,
                             is_dark_mode: true,
                         });
 
-                        Task::batch(vec![load_tasks, load_session])
+                        Task::batch(vec![load_tasks, load_session, load_color])
                     }
                     Message::DbConnected(Err(e)) => {
                         *self = PomimiApp::Error(format!("Failed to connect to database: {}", e));
@@ -207,6 +218,17 @@ impl PomimiApp {
                     Message::SessionLoaded(Err(e)) => {
                          eprintln!("Failed to load session: {}", e);
                          Task::none()
+                    }
+                    Message::ColorLoaded(Ok(Some((r, g, b)))) => {
+                        state.primary_color = Color::from_rgb(r, g, b);
+                        Task::none()
+                    }
+                    Message::ColorLoaded(Ok(None)) => {
+                        Task::none()
+                    }
+                    Message::ColorLoaded(Err(e)) => {
+                        eprintln!("Failed to load color: {}", e);
+                        Task::none()
                     }
                     Message::TaskOperationFailed(e) => {
                         eprintln!("Task operation failed: {}", e);
@@ -343,9 +365,7 @@ impl PomimiApp {
                             ViewMode::Full => {
                                 state.view_mode = ViewMode::Mini;
                                 let mini_size = Size::new(270.0, 120.0);
-                                // Assume 1920x1080 or use a reasonable default for positioning
-                                // In iced 0.13, there's no direct way to get monitor size at runtime
-                                let x = 1920.0 - mini_size.width - 20.0; // Assume standard monitor width
+                                let x = 1920.0 - mini_size.width - 20.0; 
                                 let y = 20.0;
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
@@ -380,8 +400,18 @@ impl PomimiApp {
                     }
                     Message::SetColor(color) => {
                         state.primary_color = color;
-                        // TODO: Persist
-                        Task::none()
+                        let db = state.db.clone();
+                        Task::perform(
+                            async move {
+                                db.save_accent_color(color.r, color.g, color.b).await.map_err(|e| e.to_string())
+                            },
+                            |result| {
+                                if let Err(e) = result {
+                                    eprintln!("Failed to save color: {}", e);
+                                }
+                                Message::None
+                            }
+                        )
                     }
                     Message::ToggleTheme => {
                         state.is_dark_mode = !state.is_dark_mode;
@@ -401,9 +431,13 @@ impl PomimiApp {
             PomimiApp::Loaded(state) => {
                 let timer_view = self.view_timer(state);
 
-                // Background Text "FOCUS"
+                // Background Text - dynamic based on phase
+                let phase_bg_text = match state.timer.phase {
+                    Phase::Focus => "FOCUS",
+                    Phase::ShortBreak | Phase::LongBreak => "REST",
+                };
                 let background_text = container(
-                    text("FOCUS")
+                    text(phase_bg_text)
                         .size(150)
                         .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
                         .color(Color { a: 0.05, ..theme::WHITE })
@@ -436,14 +470,12 @@ impl PomimiApp {
                         // Timer + play/pause + exit button in row
                         row![
                             timer_view,
-                            Space::new().width(Length::Fill),
-                            button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined"))) // pause / play_arrow
-                                .on_press(Message::ToggleTimer).style(theme::button_secondary),
-                            button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // open_in_new / open_in_full icon
+                            button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined")))
+                                .on_press(Message::ToggleTimer).style(components::button::secondary),
+                            button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
                                 .on_press(Message::ToggleMiniMode)
-                                .style(theme::button_ghost)
+                                .style(components::button::tertiary)
                         ].width(Length::Fill).align_y(iced::Alignment::Center),
-                        // Focused task below
                         active_task_view,
                     ]
                     .align_x(iced::Alignment::Center)
@@ -485,8 +517,8 @@ impl PomimiApp {
                                     .on_submit(Message::AddTask)
                                     .padding(10),
                                 row![
-                                    button(text("Cancel")).on_press(Message::CloseModal).style(theme::button_secondary),
-                                    button(text("Add Task")).on_press(Message::AddTask).style(theme::button_primary)
+                                    button(text("Cancel")).on_press(Message::CloseModal).style(components::button::secondary),
+                                    button(text("Add Task")).on_press(Message::AddTask).style(components::button::primary)
                                 ].spacing(10).align_y(iced::Alignment::Center)
                             ].spacing(20)
                         },
@@ -496,13 +528,24 @@ impl PomimiApp {
                                 text("Accent Color").size(14),
                                 row![
                                      button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::ORANGE.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(theme::ORANGE)).style(theme::button_ghost),
+                                        .on_press(Message::SetColor(theme::ORANGE)).style(components::button::tertiary),
                                      button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::CYAN.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(theme::CYAN)).style(theme::button_ghost),
+                                        .on_press(Message::SetColor(theme::CYAN)).style(components::button::tertiary),
                                      button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(Color::from_rgb(0.5, 0.0, 1.0).into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(Color::from_rgb(0.5, 0.0, 1.0))).style(theme::button_ghost),
+                                        .on_press(Message::SetColor(Color::from_rgb(0.5, 0.0, 1.0))).style(components::button::tertiary),
                                  ].spacing(10),
-                                 button(text("Close")).on_press(Message::CloseModal).style(theme::button_secondary).width(Length::Fill)
+                                 text("Theme").size(14),
+                                 button(
+                                     row![
+                                         text(if state.is_dark_mode { "\u{e518}" } else { "\u{e51c}" }).font(iced::Font::with_name("Material Symbols Outlined")).size(18),
+                                         text(if state.is_dark_mode { "Dark Mode" } else { "Light Mode" }).size(14)
+                                     ].spacing(10).align_y(iced::Alignment::Center)
+                                 )
+                                 .on_press(Message::ToggleTheme)
+                                 .style(components::button::secondary)
+                                 .width(Length::Fill)
+                                 .padding(10),
+                                 button(text("Done")).on_press(Message::CloseModal).style(components::button::primary).width(Length::Fill)
                             ].spacing(20)
                         },
                         Modal::None => column![].into(),
@@ -539,51 +582,14 @@ impl PomimiApp {
     }
 
     fn view_timer<'a>(&self, state: &'a State) -> Element<'a, Message> {
-        let mins = state.timer.remaining_secs / 60;
-        let secs = state.timer.remaining_secs % 60;
-        let time_str = format!("{:02}:{:02}", mins, secs);
-
-        let mut col = column![
-            text(time_str)
-                .size(if state.view_mode == ViewMode::Mini { 60 } else { 100 })
-                .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
-                .line_height(0.9),
-        ].align_x(iced::Alignment::Center);
-
-        // Show strategy buttons only if NOT running
-        if !state.timer.is_running && state.view_mode == ViewMode::Full {
-             col = col.push(
-                 row![
-                     button(text("25/5").size(12)).on_press(Message::SetDuration(25*60)).style(theme::button_secondary).padding(5),
-                     button(text("50/10").size(12)).on_press(Message::SetDuration(50*60)).style(theme::button_secondary).padding(5),
-                 ].spacing(10).padding(10)
-             );
-        }
-
-        if state.view_mode == ViewMode::Full {
-             col = col.push(Space::new().height(20));
-             col = col.push(
-                 button(
-                     row![
-                         text(if state.timer.is_running { "PAUSE FOCUS" } else { "START FOCUS" }).size(14).font(iced::Font::MONOSPACE).color(Color::BLACK),
-                         text("\u{e5c8}").font(iced::Font::with_name("Material Symbols Outlined")).size(14).color(Color::BLACK) // arrow_forward
-                     ].spacing(10).align_y(iced::Alignment::Center)
-                 )
-                 .width(Length::Fill)
-                 .padding(15)
-                 .style(theme::button_primary)
-                 .on_press(Message::ToggleTimer)
-             );
-        }
-
-        col.into()
+        components::timer::timer_display(state)
     }
 
     fn view_tasks<'a>(&self, state: &'a State) -> Element<'a, Message> {
         let header = row![
             text("PRIORITY TASKS").size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }).color(theme::TEXT_DIM),
             Space::new().width(Length::Fill),
-            button(text("+").size(14)).on_press(Message::OpenModal(Modal::AddTask)).style(theme::button_ghost)
+            button(text("+").size(14)).on_press(Message::OpenModal(Modal::AddTask)).style(components::button::tertiary)
         ].align_y(iced::Alignment::Center).width(Length::Fill);
 
         let items: Element<'a, Message> = if state.tasks.is_empty() {
@@ -593,32 +599,33 @@ impl PomimiApp {
                  state.tasks.iter().map(|task| {
                      let is_active = state.active_task_id == Some(task.id);
                      row![
-                         // Checkbox Square (using button for now)
-                         button(
-                             container(Space::new().width(8).height(8))
-                                .style(move |_t: &Theme| container::Style { background: Some(if is_active { state.primary_color } else { Color::TRANSPARENT }.into()), ..container::Style::default() })
-                         )
-                         .style(theme::button_secondary)
-                         .width(20).height(20)
-                         .on_press(Message::SetActiveTask(task.id)),
+                         components::checkbox::checkbox(is_active, state.primary_color, Message::SetActiveTask(task.id)),
 
-                         column![
-                             text(&task.text).size(14).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }).width(Length::Fill),
-                             text(if is_active { "Active Task" } else { "Focus on this task" }).size(10).color(theme::TEXT_DIM)
-                         ].spacing(2).width(Length::Fill),
+                         container(
+                             column![
+                                 text(&task.text)
+                                     .size(14)
+                                     .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                                     .color(if is_active { theme::WHITE } else { theme::TEXT_DIM })
+                                     .wrapping(text::Wrapping::None),
+                                 text(if is_active { "Active Task" } else { "Focus on this task" }).size(10).color(theme::TEXT_DIM)
+                             ].spacing(2)
+                         )
+                         .width(Length::Fill)
+                         .clip(true),
 
                          // Context Menu (Simplified to "More" or direct action for now, user asked for Dropdown but Iced simple dropdown is PickList which requires state.
                          // I'll implement a simple visibility toggle or just a delete/done button disguised as context for simplicity in this turn unless I add more state).
                          // Actually, requirements said "Dropdown list". I'll use a `pick_list` if possible, or just the buttons.
                          // Let's stick to the buttons but make them look minimal/icon only.
                          row![
-                             button(text("\u{e876}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // done
+                             button(text("\u{e876}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
                                 .on_press(Message::MarkTaskDone(task.id))
-                                .style(theme::button_ghost)
+                                .style(components::button::tertiary)
                                 .padding(5),
-                             button(text("\u{e872}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // delete/scrap
+                             button(text("\u{e872}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
                                 .on_press(Message::DeleteTask(task.id))
-                                .style(theme::button_ghost)
+                                .style(components::button::tertiary)
                                 .padding(5)
                          ]
                      ]
@@ -651,20 +658,17 @@ impl PomimiApp {
             stats,
             Space::new().width(Length::Fill),
             row![
-                // Contrast Icon
-                button(text("\u{e3a1}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)) // contrast
-                    .on_press(Message::ToggleTheme)
-                    .style(theme::button_secondary)
-                    .width(40).height(40),
                 // Settings Icon
-                button(text("\u{e8b8}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)) // settings
+                button(center(text("\u{e8b8}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)))
                     .on_press(Message::OpenModal(Modal::Settings))
-                    .style(theme::button_secondary)
+                    .style(components::button::secondary)
+                    .padding(0)
                     .width(40).height(40),
                 // Mini Mode Icon
-                button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)) // open_in_new (mini)
+                button(center(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)))
                     .on_press(Message::ToggleMiniMode)
-                    .style(theme::button_secondary)
+                    .style(components::button::secondary)
+                    .padding(0)
                     .width(40).height(40),
             ].spacing(8)
         ]
