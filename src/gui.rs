@@ -654,19 +654,22 @@ impl PomimiApp {
             Space::new().width(Length::Fill),
             row![
                 // Contrast Icon
-                button(text("\u{e3a1}").font(iced::Font::with_name("Material Symbols Outlined")).size(18))
+                button(center(text("\u{e3a1}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)))
                     .on_press(Message::ToggleTheme)
                     .style(components::button::secondary)
+                    .padding(0)
                     .width(40).height(40),
                 // Settings Icon
-                button(text("\u{e8b8}").font(iced::Font::with_name("Material Symbols Outlined")).size(18))
+                button(center(text("\u{e8b8}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)))
                     .on_press(Message::OpenModal(Modal::Settings))
                     .style(components::button::secondary)
+                    .padding(0)
                     .width(40).height(40),
                 // Mini Mode Icon
-                button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(18))
+                button(center(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)))
                     .on_press(Message::ToggleMiniMode)
                     .style(components::button::secondary)
+                    .padding(0)
                     .width(40).height(40),
             ].spacing(8)
         ]
