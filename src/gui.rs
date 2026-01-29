@@ -402,9 +402,13 @@ impl PomimiApp {
             PomimiApp::Loaded(state) => {
                 let timer_view = self.view_timer(state);
 
-                // Background Text "FOCUS"
+                // Background Text - dynamic based on phase
+                let phase_bg_text = match state.timer.phase {
+                    Phase::Focus => "FOCUS",
+                    Phase::ShortBreak | Phase::LongBreak => "REST",
+                };
                 let background_text = container(
-                    text("FOCUS")
+                    text(phase_bg_text)
                         .size(150)
                         .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
                         .color(Color { a: 0.05, ..theme::WHITE })
@@ -544,12 +548,48 @@ impl PomimiApp {
         let secs = state.timer.remaining_secs % 60;
         let time_str = format!("{:02}:{:02}", mins, secs);
 
-        let mut col = column![
+        let phase_label = match state.timer.phase {
+            Phase::Focus => "FOCUS",
+            Phase::ShortBreak | Phase::LongBreak => "REST",
+        };
+
+        let timer_display: Element<'a, Message> = if state.view_mode == ViewMode::Full {
+            container(
+                stack![
+                    container(
+                        text(phase_label)
+                            .size(80)
+                            .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Black, ..iced::Font::DEFAULT })
+                            .color(Color { a: 0.05, ..if state.is_dark_mode { theme::WHITE } else { theme::DARK_BG } })
+                    )
+                    .align_x(iced::Alignment::Center)
+                    .align_y(iced::Alignment::Start)
+                    .padding(iced::Padding { top: 4.0, right: 0.0, bottom: 0.0, left: 0.0 })
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+                    container(
+                        text(time_str)
+                            .size(100)
+                            .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                            .line_height(0.9)
+                    )
+                    .align_x(iced::Alignment::Center)
+                    .align_y(iced::Alignment::Center)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                ]
+            )
+            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 })
+            .into()
+        } else {
             text(time_str)
-                .size(if state.view_mode == ViewMode::Mini { 60 } else { 100 })
+                .size(60)
                 .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
-                .line_height(0.9),
-        ].align_x(iced::Alignment::Center);
+                .line_height(0.9)
+                .into()
+        };
+
+        let mut col = column![timer_display].align_x(iced::Alignment::Center);
 
         // Show strategy buttons only if NOT running
         if !state.timer.is_running && state.view_mode == ViewMode::Full {
