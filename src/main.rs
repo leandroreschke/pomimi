@@ -5,19 +5,16 @@ mod theme;
 
 use std::env;
 use gui::PomimiApp;
-use model::Config;
 
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
-    
-    // Load config to check default preference
-    let config = Config::load();
     
     let run_cli = if args.len() > 1 {
         if args[1] == "--cli" {
             true
         } else {
             let arg = &args[1];
+            // Simple heuristic to check if arg is time
             if arg.ends_with('m') || arg.ends_with('s') || arg.parse::<u64>().is_ok() {
                 true
             } else {
@@ -25,7 +22,7 @@ fn main() -> iced::Result {
             }
         }
     } else {
-        config.cli_mode_default
+        false
     };
 
     if run_cli {
