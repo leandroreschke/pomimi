@@ -66,7 +66,14 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
          col = col.push(
              button(
                  row![
-                     text(if state.timer.is_running { "PAUSE FOCUS" } else { "START FOCUS" }).size(14).font(iced::Font::MONOSPACE).color(Color::BLACK),
+                     text(if state.timer.is_running {
+                         "PAUSE"
+                     } else {
+                         match state.timer.phase {
+                             Phase::Focus => "FOCUS",
+                             _ => "REST"
+                         }
+                     }).size(14).font(iced::Font::MONOSPACE).color(Color::BLACK),
                      text("\u{e5c8}").font(iced::Font::with_name("Material Symbols Outlined")).size(14).color(Color::BLACK) // arrow_forward
                  ].spacing(10).align_y(iced::Alignment::Center)
              )

@@ -28,6 +28,67 @@ impl Phase {
     }
 }
 
+fn play_sound() {
+    std::thread::spawn(|| {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("powershell")
+                .args(&["-c", "[console]::beep(800, 300)"])
+                .status();
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Generate WAV
+            let sample_rate = 44100;
+            let duration_secs = 0.3;
+            let num_samples = (sample_rate as f32 * duration_secs) as usize;
+            let mut data = Vec::with_capacity(44 + num_samples * 2);
+
+            // RIFF
+            data.extend_from_slice(b"RIFF");
+            let file_size = 36 + num_samples * 2;
+            data.extend_from_slice(&(file_size as u32).to_le_bytes());
+            data.extend_from_slice(b"WAVE");
+
+            // fmt
+            data.extend_from_slice(b"fmt ");
+            data.extend_from_slice(&16u32.to_le_bytes()); // chunk size
+            data.extend_from_slice(&1u16.to_le_bytes()); // PCM
+            data.extend_from_slice(&1u16.to_le_bytes()); // Channels
+            data.extend_from_slice(&(sample_rate as u32).to_le_bytes()); // Sample Rate
+            let byte_rate = sample_rate * 2;
+            data.extend_from_slice(&(byte_rate as u32).to_le_bytes());
+            data.extend_from_slice(&2u16.to_le_bytes()); // Block align
+            data.extend_from_slice(&16u16.to_le_bytes()); // Bits per sample
+
+            // data
+            data.extend_from_slice(b"data");
+            let data_size = num_samples * 2;
+            data.extend_from_slice(&(data_size as u32).to_le_bytes());
+
+            // Sine wave 440Hz
+            for i in 0..num_samples {
+                let t = i as f32 / sample_rate as f32;
+                let amplitude = 0.2 * 32767.0;
+                let value = (amplitude * (2.0 * std::f32::consts::PI * 440.0 * t).sin()) as i16;
+                data.extend_from_slice(&value.to_le_bytes());
+            }
+
+            let mut path = std::env::temp_dir();
+            path.push("pomimi_beep.wav");
+
+            if let Ok(_) = std::fs::write(&path, data) {
+                 #[cfg(target_os = "macos")]
+                 let _ = std::process::Command::new("afplay").arg(&path).status();
+
+                 #[cfg(target_os = "linux")]
+                 let _ = std::process::Command::new("aplay").arg("-q").arg(&path).status();
+            }
+        }
+    });
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Modal {
     None,
@@ -65,6 +126,7 @@ pub struct State {
     pub view_mode: ViewMode,
     pub new_task_input: String,
     pub active_task_id: Option<i64>,
+    pub pending_completion_task_id: Option<i64>,
     pub active_modal: Modal,
     pub primary_color: Color,
     pub is_dark_mode: bool,
@@ -95,9 +157,10 @@ pub enum Message {
     // Tasks
     UpdateNewTaskInput(String),
     AddTask,
-    DeleteTask(i64),
-    MarkTaskDone(i64),
     SetActiveTask(i64),
+    RequestCompleteTask(i64),
+    ConfirmCompleteTask,
+    CancelCompleteTask,
 
     // UI
     ToggleMiniMode,
@@ -182,6 +245,7 @@ impl PomimiApp {
                             view_mode: ViewMode::Full,
                             new_task_input: String::new(),
                             active_task_id: None,
+                            pending_completion_task_id: None,
                             active_modal: Modal::None,
                             primary_color: theme::ORANGE,
                             is_dark_mode: true,
@@ -255,6 +319,9 @@ impl PomimiApp {
                                     state.session_focus_seconds += 1;
                                 }
                             } else {
+                                // Play sound
+                                play_sound();
+
                                 let completed_phase = state.timer.phase.clone();
                                 match completed_phase {
                                     Phase::Focus => {
@@ -328,35 +395,35 @@ impl PomimiApp {
                             Task::none()
                         }
                     }
-                    Message::DeleteTask(id) => {
-                        if state.active_task_id == Some(id) {
-                            state.active_task_id = None;
-                        }
-                        let db = state.db.clone();
-                        Task::perform(
-                            async move { db.delete_task(id).await.map_err(|e| e.to_string()) },
-                            |res| match res {
-                                Ok(_) => Message::TaskOperationSuccess,
-                                Err(e) => Message::TaskOperationFailed(e),
-                            }
-                        )
-                    }
-                    Message::MarkTaskDone(id) => {
-                        if state.active_task_id == Some(id) {
-                            state.active_task_id = None;
-                        }
-                         let db = state.db.clone();
-                        Task::perform(
-                            async move { db.delete_task(id).await.map_err(|e| e.to_string()) },
-                             |res| match res {
-                                Ok(_) => Message::TaskOperationSuccess,
-                                Err(e) => Message::TaskOperationFailed(e),
-                            }
-                        )
-                    }
                     Message::SetActiveTask(id) => {
                         state.active_task_id = Some(id);
                         Task::none()
+                    }
+                    Message::RequestCompleteTask(id) => {
+                        state.pending_completion_task_id = Some(id);
+                        Task::none()
+                    }
+                    Message::CancelCompleteTask => {
+                        state.pending_completion_task_id = None;
+                        Task::none()
+                    }
+                    Message::ConfirmCompleteTask => {
+                        if let Some(id) = state.pending_completion_task_id {
+                            state.pending_completion_task_id = None;
+                            if state.active_task_id == Some(id) {
+                                state.active_task_id = None;
+                            }
+                            let db = state.db.clone();
+                            Task::perform(
+                                async move { db.delete_task(id).await.map_err(|e| e.to_string()) },
+                                |res| match res {
+                                    Ok(_) => Message::TaskOperationSuccess,
+                                    Err(e) => Message::TaskOperationFailed(e),
+                                }
+                            )
+                        } else {
+                            Task::none()
+                        }
                     }
 
                     // UI
@@ -444,26 +511,40 @@ impl PomimiApp {
                 ).align_x(iced::Alignment::Center);
 
                 let content: Element<Message> = if state.view_mode == ViewMode::Mini {
-                    let active_task_view: Element<'_, Message> = if let Some(id) = state.active_task_id {
-                        if let Some(task) = state.tasks.iter().find(|t| t.id == id) {
+                    let active_task_view: Element<'_, Message> = match state.timer.phase {
+                        Phase::ShortBreak | Phase::LongBreak => {
                              container(
-                                 row![
-                                     container(Space::new().width(6).height(6))
-                                         .style(|_t: &Theme| container::Style { background: Some(state.primary_color.into()), ..container::Style::default() }),
-                                     column![
-                                         text(&task.text).size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
-                                     ]
-                                 ].spacing(10).align_y(iced::Alignment::Center)
+                                 text("REST").size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
                              )
                              .padding(10)
-                             .style(|_t: &Theme| container::Style { background: Some(Color{a:0.05, ..theme::WHITE}.into()), ..container::Style::default() })
                              .width(Length::Fill)
+                             .align_x(iced::Alignment::Center)
+                             .style(|_t: &Theme| container::Style { background: Some(Color{a:0.05, ..theme::WHITE}.into()), ..container::Style::default() })
                              .into()
-                        } else {
-                            Space::new().width(Length::Fill).into()
                         }
-                    } else {
-                        Space::new().width(Length::Fill).into()
+                        Phase::Focus => {
+                            if let Some(id) = state.active_task_id {
+                                if let Some(task) = state.tasks.iter().find(|t| t.id == id) {
+                                     container(
+                                         row![
+                                             container(Space::new().width(6).height(6))
+                                                 .style(|_t: &Theme| container::Style { background: Some(state.primary_color.into()), ..container::Style::default() }),
+                                             column![
+                                                 text(&task.text).size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
+                                             ]
+                                         ].spacing(10).align_y(iced::Alignment::Center)
+                                     )
+                                     .padding(10)
+                                     .style(|_t: &Theme| container::Style { background: Some(Color{a:0.05, ..theme::WHITE}.into()), ..container::Style::default() })
+                                     .width(Length::Fill)
+                                     .into()
+                                } else {
+                                    Space::new().width(Length::Fill).into()
+                                }
+                            } else {
+                                Space::new().width(Length::Fill).into()
+                            }
+                        }
                     };
 
                     column![
@@ -597,43 +678,51 @@ impl PomimiApp {
         } else {
              scrollable(column(
                  state.tasks.iter().map(|task| {
-                     let is_active = state.active_task_id == Some(task.id);
-                     row![
-                         components::checkbox::checkbox(is_active, state.primary_color, Message::SetActiveTask(task.id)),
-
-                         container(
-                             column![
-                                 text(&task.text)
-                                     .size(14)
-                                     .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
-                                     .color(if is_active { theme::WHITE } else { theme::TEXT_DIM })
-                                     .wrapping(text::Wrapping::None),
-                                 text(if is_active { "Active Task" } else { "Focus on this task" }).size(10).color(theme::TEXT_DIM)
-                             ].spacing(2)
-                         )
-                         .width(Length::Fill)
-                         .clip(true),
-
-                         // Context Menu (Simplified to "More" or direct action for now, user asked for Dropdown but Iced simple dropdown is PickList which requires state.
-                         // I'll implement a simple visibility toggle or just a delete/done button disguised as context for simplicity in this turn unless I add more state).
-                         // Actually, requirements said "Dropdown list". I'll use a `pick_list` if possible, or just the buttons.
-                         // Let's stick to the buttons but make them look minimal/icon only.
+                     if state.pending_completion_task_id == Some(task.id) {
                          row![
+                             button(text("Complete").size(14))
+                                 .on_press(Message::ConfirmCompleteTask)
+                                 .style(components::button::primary)
+                                 .width(Length::Fill)
+                                 .padding(10),
+                             button(text("\u{e5c9}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
+                                 .on_press(Message::CancelCompleteTask)
+                                 .style(components::button::secondary)
+                                 .padding(10)
+                         ]
+                         .spacing(10)
+                         .padding(10)
+                         .width(Length::Fill)
+                         .into()
+                     } else {
+                         let is_active = state.active_task_id == Some(task.id);
+                         row![
+                             components::checkbox::checkbox(is_active, state.primary_color, Message::SetActiveTask(task.id)),
+
+                             container(
+                                 column![
+                                     text(&task.text)
+                                         .size(14)
+                                         .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                                         .color(if is_active { state.primary_color } else { theme::TEXT_DIM })
+                                         .wrapping(text::Wrapping::None),
+                                     text(if is_active { "Active Task" } else { "Focus on this task" }).size(10).color(theme::TEXT_DIM)
+                                 ].spacing(2)
+                             )
+                             .width(Length::Fill)
+                             .clip(true),
+
                              button(text("\u{e876}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
-                                .on_press(Message::MarkTaskDone(task.id))
-                                .style(components::button::tertiary)
-                                .padding(5),
-                             button(text("\u{e872}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
-                                .on_press(Message::DeleteTask(task.id))
+                                .on_press(Message::RequestCompleteTask(task.id))
                                 .style(components::button::tertiary)
                                 .padding(5)
                          ]
-                     ]
-                     .spacing(15)
-                     .align_y(iced::Alignment::Center)
-                     .padding(10)
-                     .width(Length::Fill)
-                     .into()
+                         .spacing(15)
+                         .align_y(iced::Alignment::Center)
+                         .padding(10)
+                         .width(Length::Fill)
+                         .into()
+                     }
                  })
              ).spacing(10)).height(Length::Fill).into()
         };
