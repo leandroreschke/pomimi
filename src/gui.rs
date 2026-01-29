@@ -83,6 +83,7 @@ pub enum Message {
     DbConnected(Result<Database, String>),
     TasksLoaded(Result<Vec<DbTask>, String>),
     SessionLoaded(Result<i64, String>),
+    ColorLoaded(Result<Option<(f32, f32, f32)>, String>),
     TaskOperationFailed(String),
     TaskOperationSuccess,
 
@@ -163,6 +164,15 @@ impl PomimiApp {
                              },
                              Message::SessionLoaded
                         );
+                        let load_color = Task::perform(
+                             {
+                                let db = db.clone();
+                                async move { 
+                                    db.get_accent_color().await.map_err(|e| e.to_string())
+                                }
+                             },
+                             Message::ColorLoaded
+                        );
 
                         *self = PomimiApp::Loaded(State {
                             db,
@@ -173,11 +183,11 @@ impl PomimiApp {
                             new_task_input: String::new(),
                             active_task_id: None,
                             active_modal: Modal::None,
-                            primary_color: theme::ORANGE, // Default, TODO: Load from DB
+                            primary_color: theme::ORANGE,
                             is_dark_mode: true,
                         });
 
-                        Task::batch(vec![load_tasks, load_session])
+                        Task::batch(vec![load_tasks, load_session, load_color])
                     }
                     Message::DbConnected(Err(e)) => {
                         *self = PomimiApp::Error(format!("Failed to connect to database: {}", e));
@@ -208,6 +218,17 @@ impl PomimiApp {
                     Message::SessionLoaded(Err(e)) => {
                          eprintln!("Failed to load session: {}", e);
                          Task::none()
+                    }
+                    Message::ColorLoaded(Ok(Some((r, g, b)))) => {
+                        state.primary_color = Color::from_rgb(r, g, b);
+                        Task::none()
+                    }
+                    Message::ColorLoaded(Ok(None)) => {
+                        Task::none()
+                    }
+                    Message::ColorLoaded(Err(e)) => {
+                        eprintln!("Failed to load color: {}", e);
+                        Task::none()
                     }
                     Message::TaskOperationFailed(e) => {
                         eprintln!("Task operation failed: {}", e);
@@ -379,8 +400,18 @@ impl PomimiApp {
                     }
                     Message::SetColor(color) => {
                         state.primary_color = color;
-                        // TODO: Persist
-                        Task::none()
+                        let db = state.db.clone();
+                        Task::perform(
+                            async move {
+                                db.save_accent_color(color.r, color.g, color.b).await.map_err(|e| e.to_string())
+                            },
+                            |result| {
+                                if let Err(e) = result {
+                                    eprintln!("Failed to save color: {}", e);
+                                }
+                                Message::None
+                            }
+                        )
                     }
                     Message::ToggleTheme => {
                         state.is_dark_mode = !state.is_dark_mode;
