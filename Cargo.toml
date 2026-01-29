@@ -3,6 +3,14 @@ name = "pomimi"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.bundle]
+name = "Pomimi"
+identifier = "com.pomimi.pomimi"
+icon = ["assets/images/icon.icns"]
+category = "Productivity"
+short_description = "A beautiful Pomodoro timer"
+long_description = "Pomimi is a minimalist Pomodoro timer to help you focus and track your productivity."
+
 [dependencies]
 iced = { version = "0.14", features = ["tokio", "advanced", "canvas", "image"] }
 serde = { version = "1.0", features = ["derive"] }
