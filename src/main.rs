@@ -10,7 +10,6 @@ use model::Config;
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
     
-    // Load config to check default preference
     let config = Config::load();
     
     let run_cli = if args.len() > 1 {

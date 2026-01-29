@@ -134,16 +134,12 @@ fn draw_progress_bar(width: usize, progress: f32, start_color: Rgb, end_color: R
         if i < filled_width {
             let t = i as f32 / width as f32;
             let color = start_color.lerp(&end_color, t);
-            // Solid block for progress
             print!("\x1b[38;2;{};{};{}m\u{2588}", color.r, color.g, color.b);
         } else {
-            // Dithered background, white/default color
-            // Using light shade
             print!("\x1b[37m\u{2591}");
         }
     }
 
-    // Print percentage at the end
     let percent = (progress * 100.0) as usize;
     print!("\x1b[0m\x1b[2m{:>3}%\x1b[0m", percent);
 
@@ -187,12 +183,10 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
         let progress = elapsed.as_secs_f32() / duration.as_secs_f32();
 
         clear_screen();
-        // Top Left: Start Time (No label)
         println!("\x1b[2m{}\x1b[0m\n", start_time_str);
 
         println!("\x1b[2mPOMIMI: {}\x1b[0m", label);
 
-        // Time Remaining with Predicted End on Left (No label for End)
         println!("\x1b[2m{}  Time Remaining: {}\x1b[0m\n", predicted_end_str, format_duration(remaining));
 
         draw_progress_bar(width, progress, indigo, orange);
@@ -200,7 +194,6 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
         thread::sleep(Duration::from_millis(100));
     }
 
-    // Final state
     clear_screen();
     println!("\x1b[2m{}\x1b[0m\n", start_time_str);
     println!("\x1b[2mPOMIMI: {} - DONE!\x1b[0m", label);
@@ -215,12 +208,6 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
 
 pub fn run() {
     let args: Vec<String> = env::args().collect();
-
-    // Check custom arg
-    // Note: When calling from main we might need to adjust how we parse args if we introduce flags
-    // But for now, if the user does `pomimi 15m`, args[1] is 15m.
-    // If we have `pomimi --cli 15m`, args[1] is --cli.
-    // We should handle this.
 
     let time_arg = if args.len() > 1 {
         if args[1] == "--cli" && args.len() > 2 {
@@ -250,14 +237,11 @@ pub fn run() {
              run_timer(duration, "Custom Focus", false);
              return;
         } else {
-            // If it failed to parse, maybe it's not a time string but a command?
-            // For now, keep original behavior
             eprintln!("Invalid time format. Use '15m' or '30s'.");
             return;
         }
     }
 
-    // Menu State
     let mut require_approval = false;
     let mut selection = 0;
 
@@ -307,22 +291,22 @@ pub fn run() {
             }
             Key::Enter | Key::Char('a') | Key::Char('A') => {
                 match selection {
-                    0 => { // Classic
+                    0 => {
                         drop(_raw);
                         run_timer(Duration::from_secs(25 * 60), "Focus (25m)", false);
                         run_timer(Duration::from_secs(5 * 60), "Break (5m)", require_approval);
                         break;
                     },
-                    1 => { // Long
+                    1 => {
                         drop(_raw);
                         run_timer(Duration::from_secs(50 * 60), "Focus (50m)", false);
                         run_timer(Duration::from_secs(10 * 60), "Break (10m)", require_approval);
                         break;
                     },
-                    2 => { // Toggle
+                    2 => {
                         require_approval = !require_approval;
                     },
-                    3 => { // Quit
+                    3 => {
                         break;
                     },
                     _ => {}

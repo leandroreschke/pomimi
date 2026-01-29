@@ -1,10 +1,10 @@
 use iced::widget::{button, container, progress_bar};
 use iced::{Border, Color, Theme, Background};
 
-pub const BACKGROUND: Color = Color::from_rgb(0.07, 0.07, 0.07); // Very dark grey
+pub const BACKGROUND: Color = Color::from_rgb(0.07, 0.07, 0.07);
 pub const SURFACE: Color = Color::from_rgb(0.12, 0.12, 0.12);
-pub const PRIMARY: Color = Color::from_rgb(1.0, 0.2, 0.6); // Neon Pink
-pub const ACCENT: Color = Color::from_rgb(0.0, 1.0, 1.0); // Cyan
+pub const PRIMARY: Color = Color::from_rgb(1.0, 0.2, 0.6);
+pub const ACCENT: Color = Color::from_rgb(0.0, 1.0, 1.0);
 pub const TEXT: Color = Color::from_rgb(0.9, 0.9, 0.9);
 pub const TEXT_DIM: Color = Color::from_rgb(0.5, 0.5, 0.5);
 
@@ -20,7 +20,7 @@ pub fn container_bordered(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(SURFACE.into()),
         border: Border {
-            color: SURFACE, // Or ACCENT for cyberpunk feel
+            color: SURFACE,
             width: 1.0,
             radius: 4.0.into(),
         },

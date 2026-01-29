@@ -125,7 +125,6 @@ impl PomimiApp {
                                 self.remaining = self.focus_duration;
                             }
                         }
-                        // Play sound or notify? (TODO)
                     }
                 }
                 Task::none()
@@ -139,7 +138,6 @@ impl PomimiApp {
             }
             Message::SetDuration(d) => {
                 self.focus_duration = d;
-                // Simple logic: Break is 1/5 of focus, minimum 1 min
                 let break_secs = (d.as_secs() / 5).max(60);
                 self.break_duration = Duration::from_secs(break_secs);
 
@@ -158,7 +156,7 @@ impl PomimiApp {
             Message::AddTodo => {
                 if !self.new_todo_input.trim().is_empty() {
                     if let Some(list) = self.todo_lists.get_mut(self.active_list_index) {
-                        let id = list.items.len() as u64; // Simple ID generation
+                        let id = list.items.len() as u64;
                         list.items.push(TodoItem {
                             id,
                             text: self.new_todo_input.trim().to_string(),
@@ -166,7 +164,6 @@ impl PomimiApp {
                         });
                         self.new_todo_input.clear();
 
-                        // Save config
                         self.config.todo_lists = self.todo_lists.clone();
                         self.config.save();
                     }
@@ -178,7 +175,6 @@ impl PomimiApp {
                     if let Some(item) = list.items.get_mut(index) {
                         item.completed = is_checked;
 
-                        // Save config
                         self.config.todo_lists = self.todo_lists.clone();
                         self.config.save();
                     }
@@ -190,7 +186,6 @@ impl PomimiApp {
                     if index < list.items.len() {
                         list.items.remove(index);
 
-                        // Save config
                         self.config.todo_lists = self.todo_lists.clone();
                         self.config.save();
                     }
@@ -222,7 +217,6 @@ impl PomimiApp {
                      self.is_creating_list = false;
                      self.new_list_input.clear();
 
-                     // Save config
                      self.config.todo_lists = self.todo_lists.clone();
                      self.config.save();
                  }
@@ -353,7 +347,6 @@ impl PomimiApp {
     }
 
     fn view_todos(&self) -> Element<'_, Message> {
-        // List tabs
         let mut list_tabs = row![].spacing(10);
         for (i, list) in self.todo_lists.iter().enumerate() {
             let color = if i == self.active_list_index { theme::PRIMARY } else { theme::ACCENT };
@@ -385,7 +378,6 @@ impl PomimiApp {
             row![].into()
         };
 
-        // Current list items
         let current_list = &self.todo_lists[self.active_list_index];
         let items: Element<Message> = if current_list.items.is_empty() {
              text("No tasks yet. Stay focused!").size(16).color(theme::TEXT_DIM).into()
@@ -396,7 +388,7 @@ impl PomimiApp {
                         checkbox("", item.completed)
                             .on_toggle(move |checked| Message::ToggleTodo(i, checked)),
                         text(&item.text).size(18).color(if item.completed { theme::TEXT_DIM } else { theme::TEXT }),
-                        button(text("x").color(theme::ACCENT)).on_press(Message::DeleteTodo(i)).style(theme::button_secondary) // Minimal delete
+                        button(text("x").color(theme::ACCENT)).on_press(Message::DeleteTodo(i)).style(theme::button_secondary)
                     ]
                     .spacing(10)
                     .align_y(iced::Alignment::Center)
