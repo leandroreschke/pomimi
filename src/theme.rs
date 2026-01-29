@@ -1,5 +1,5 @@
-use iced::widget::{button, container, progress_bar};
-use iced::{Border, Color, Theme, Background};
+use iced::widget::{button, container};
+use iced::{Border, Color, Theme};
 use iced::theme::{Palette, Custom};
 use std::sync::Arc;
 
@@ -10,9 +10,6 @@ pub const DARK_BG: Color = Color::from_rgb(0.07, 0.07, 0.07); // #121212
 pub const MUTED_GRAY: Color = Color::from_rgb(0.2, 0.2, 0.2); // #333333
 pub const TEXT_DIM: Color = Color::from_rgb(0.5, 0.5, 0.5);
 pub const CYAN: Color = Color::from_rgb(0.0, 1.0, 1.0);
-
-#[allow(dead_code)]
-pub const PRIMARY: Color = ORANGE;
 
 pub fn create_theme(dark_mode: bool, primary: Color) -> Theme {
     let palette = if dark_mode {
@@ -100,7 +97,6 @@ pub fn button_secondary(theme: &Theme, status: button::Status) -> button::Style 
 }
 
 // Minimal/Ghost button
-#[allow(dead_code)]
 pub fn button_ghost(theme: &Theme, status: button::Status) -> button::Style {
     let palette = theme.palette();
     let base = button::Style {
@@ -116,24 +112,6 @@ pub fn button_ghost(theme: &Theme, status: button::Status) -> button::Style {
             ..base
         },
         _ => base
-    }
-}
-
-#[allow(dead_code)]
-pub fn button_outline(theme: &Theme, status: button::Status) -> button::Style {
-    button_secondary(theme, status)
-}
-
-#[allow(dead_code)]
-pub fn progress_bar_style(theme: &Theme) -> progress_bar::Style {
-    let palette = theme.palette();
-    progress_bar::Style {
-        background: Background::Color(scale_alpha(palette.text, 0.1)),
-        bar: Background::Color(palette.primary),
-        border: Border {
-            radius: 0.0.into(),
-            ..Border::default()
-        },
     }
 }
 

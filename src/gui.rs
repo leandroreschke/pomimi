@@ -88,10 +88,6 @@ pub enum Message {
     // Timer
     ToggleTimer,
     Tick,
-    #[allow(dead_code)]
-    ResetTimer,
-    #[allow(dead_code)]
-    SkipPhase,
     SetDuration(u64),
 
     // Tasks
@@ -263,17 +259,6 @@ impl PomimiApp {
                             }
                         }
                         Task::none()
-                    }
-                    Message::ResetTimer => {
-                        state.timer.is_running = false;
-                        state.timer.phase = Phase::Focus;
-                        state.timer.remaining_secs = Phase::Focus.duration_secs();
-                        state.timer.total_secs = Phase::Focus.duration_secs();
-                        Task::none()
-                    }
-                    Message::SkipPhase => {
-                         state.timer.remaining_secs = 0;
-                         Task::none()
                     }
                     Message::SetDuration(secs) => {
                         // Custom logic for 50/10 vs 25/5 could go here,

@@ -1,4 +1,4 @@
-use sqlx::{sqlite::SqlitePool, Row};
+use sqlx::sqlite::SqlitePool;
 use directories::ProjectDirs;
 use std::fs;
 use chrono;
@@ -7,10 +7,6 @@ use chrono;
 pub struct Task {
     pub id: i64,
     pub text: String,
-    #[allow(dead_code)]
-    pub completed: bool,
-    #[allow(dead_code)]
-    pub created_at: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -64,7 +60,7 @@ impl Database {
 
     pub async fn get_tasks(&self) -> Result<Vec<Task>, sqlx::Error> {
         let tasks = sqlx::query_as::<_, Task>(
-            "SELECT id, text, completed, created_at FROM tasks ORDER BY created_at DESC"
+            "SELECT id, text FROM tasks ORDER BY created_at DESC"
         )
         .fetch_all(&self.pool)
         .await?;
@@ -88,30 +84,6 @@ impl Database {
             .bind(id)
             .execute(&self.pool)
             .await?;
-        Ok(())
-    }
-
-    // Preferences
-    #[allow(dead_code)]
-    pub async fn get_preference(&self, key: &str) -> Result<Option<String>, sqlx::Error> {
-        let row = sqlx::query("SELECT value FROM preferences WHERE key = ?")
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.map(|r| r.get("value")))
-    }
-
-    #[allow(dead_code)]
-    pub async fn set_preference(&self, key: &str, value: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO preferences (key, value) VALUES (?, ?)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-        )
-        .bind(key)
-        .bind(value)
-        .execute(&self.pool)
-        .await?;
         Ok(())
     }
 
