@@ -1,7 +1,7 @@
-use iced::{Element, Color, Length};
-use iced::widget::{column, container, text, button, stack, Space, row};
+use iced::{Element, Length, Color};
+use iced::widget::{column, text, button, container, Space, stack, row};
 use crate::theme;
-use crate::gui::{Message, Phase, ViewMode, State};
+use crate::gui::{Message, State, Phase, ViewMode};
 
 pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
     let mins = state.timer.remaining_secs / 60;
@@ -66,8 +66,15 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
          col = col.push(
              button(
                  row![
-                     text(if state.timer.is_running { "PAUSE FOCUS" } else { "START FOCUS" }).size(14).font(iced::Font::MONOSPACE).color(Color::BLACK),
-                     text("\u{e5c8}").font(iced::Font::with_name("Material Symbols Outlined")).size(14).color(Color::BLACK) // arrow_forward
+                     text(if state.timer.is_running {
+                         "PAUSE"
+                     } else {
+                         match state.timer.phase {
+                             Phase::Focus => "FOCUS",
+                             _ => "REST"
+                         }
+                     }).size(14).font(iced::Font::MONOSPACE).color(theme::BLACK),
+                     text("\u{e5c8}").font(iced::Font::with_name("Material Symbols Outlined")).size(14).color(theme::BLACK) // arrow_forward
                  ].spacing(10).align_y(iced::Alignment::Center)
              )
              .width(Length::Fill)
