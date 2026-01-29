@@ -2,6 +2,7 @@ use iced::{Element, Task, Theme, Subscription, time, Length, window, Size, Color
 use iced::widget::{column, container, text, button, center, row, text_input, scrollable, Space, stack};
 use crate::theme;
 use crate::model::{Database, Task as DbTask};
+use crate::components;
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -437,11 +438,11 @@ impl PomimiApp {
                         row![
                             timer_view,
                             Space::new().width(Length::Fill),
-                            button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined"))) // pause / play_arrow
-                                .on_press(Message::ToggleTimer).style(theme::button_secondary),
-                            button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // open_in_new / open_in_full icon
+                            button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined")))
+                                .on_press(Message::ToggleTimer).style(components::button::secondary),
+                            button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
                                 .on_press(Message::ToggleMiniMode)
-                                .style(theme::button_ghost)
+                                .style(components::button::tertiary)
                         ].width(Length::Fill).align_y(iced::Alignment::Center),
                         // Focused task below
                         active_task_view,
@@ -485,8 +486,8 @@ impl PomimiApp {
                                     .on_submit(Message::AddTask)
                                     .padding(10),
                                 row![
-                                    button(text("Cancel")).on_press(Message::CloseModal).style(theme::button_secondary),
-                                    button(text("Add Task")).on_press(Message::AddTask).style(theme::button_primary)
+                                    button(text("Cancel")).on_press(Message::CloseModal).style(components::button::secondary),
+                                    button(text("Add Task")).on_press(Message::AddTask).style(components::button::primary)
                                 ].spacing(10).align_y(iced::Alignment::Center)
                             ].spacing(20)
                         },
@@ -496,13 +497,13 @@ impl PomimiApp {
                                 text("Accent Color").size(14),
                                 row![
                                      button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::ORANGE.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(theme::ORANGE)).style(theme::button_ghost),
+                                        .on_press(Message::SetColor(theme::ORANGE)).style(components::button::tertiary),
                                      button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::CYAN.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(theme::CYAN)).style(theme::button_ghost),
+                                        .on_press(Message::SetColor(theme::CYAN)).style(components::button::tertiary),
                                      button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(Color::from_rgb(0.5, 0.0, 1.0).into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(Color::from_rgb(0.5, 0.0, 1.0))).style(theme::button_ghost),
+                                        .on_press(Message::SetColor(Color::from_rgb(0.5, 0.0, 1.0))).style(components::button::tertiary),
                                  ].spacing(10),
-                                 button(text("Close")).on_press(Message::CloseModal).style(theme::button_secondary).width(Length::Fill)
+                                 button(text("Done")).on_press(Message::CloseModal).style(components::button::primary).width(Length::Fill)
                             ].spacing(20)
                         },
                         Modal::None => column![].into(),
@@ -554,8 +555,8 @@ impl PomimiApp {
         if !state.timer.is_running && state.view_mode == ViewMode::Full {
              col = col.push(
                  row![
-                     button(text("25/5").size(12)).on_press(Message::SetDuration(25*60)).style(theme::button_secondary).padding(5),
-                     button(text("50/10").size(12)).on_press(Message::SetDuration(50*60)).style(theme::button_secondary).padding(5),
+                     button(text("25/5").size(12)).on_press(Message::SetDuration(25*60)).style(components::button::secondary).padding(5),
+                     button(text("50/10").size(12)).on_press(Message::SetDuration(50*60)).style(components::button::secondary).padding(5),
                  ].spacing(10).padding(10)
              );
         }
@@ -571,7 +572,7 @@ impl PomimiApp {
                  )
                  .width(Length::Fill)
                  .padding(15)
-                 .style(theme::button_primary)
+                 .style(components::button::primary)
                  .on_press(Message::ToggleTimer)
              );
         }
@@ -583,7 +584,7 @@ impl PomimiApp {
         let header = row![
             text("PRIORITY TASKS").size(12).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }).color(theme::TEXT_DIM),
             Space::new().width(Length::Fill),
-            button(text("+").size(14)).on_press(Message::OpenModal(Modal::AddTask)).style(theme::button_ghost)
+            button(text("+").size(14)).on_press(Message::OpenModal(Modal::AddTask)).style(components::button::tertiary)
         ].align_y(iced::Alignment::Center).width(Length::Fill);
 
         let items: Element<'a, Message> = if state.tasks.is_empty() {
@@ -593,12 +594,48 @@ impl PomimiApp {
                  state.tasks.iter().map(|task| {
                      let is_active = state.active_task_id == Some(task.id);
                      row![
-                         // Checkbox Square (using button for now)
                          button(
-                             container(Space::new().width(8).height(8))
-                                .style(move |_t: &Theme| container::Style { background: Some(if is_active { state.primary_color } else { Color::TRANSPARENT }.into()), ..container::Style::default() })
+                             container(
+                                 if is_active {
+                                     container(Space::new().width(10).height(10))
+                                         .style(move |_t: &Theme| container::Style { 
+                                             background: Some(state.primary_color.into()), 
+                                             ..container::Style::default() 
+                                         })
+                                 } else {
+                                     container(Space::new().width(10).height(10))
+                                 }
+                             )
+                             .width(20)
+                             .height(20)
+                             .align_x(iced::Alignment::Center)
+                             .align_y(iced::Alignment::Center)
                          )
-                         .style(theme::button_secondary)
+                         .style(move |theme: &Theme, status: button::Status| {
+                             let palette = theme.palette();
+                             let base = button::Style {
+                                 background: None,
+                                 text_color: palette.text,
+                                 border: iced::Border {
+                                     color: palette.text,
+                                     width: 1.0,
+                                     radius: 0.0.into(),
+                                 },
+                                 ..button::Style::default()
+                             };
+                             match status {
+                                 button::Status::Hovered => button::Style {
+                                     background: None,
+                                     border: iced::Border {
+                                         color: state.primary_color,
+                                         width: 1.0,
+                                         radius: 0.0.into(),
+                                     },
+                                     ..base
+                                 },
+                                 _ => base,
+                             }
+                         })
                          .width(20).height(20)
                          .on_press(Message::SetActiveTask(task.id)),
 
@@ -612,13 +649,13 @@ impl PomimiApp {
                          // Actually, requirements said "Dropdown list". I'll use a `pick_list` if possible, or just the buttons.
                          // Let's stick to the buttons but make them look minimal/icon only.
                          row![
-                             button(text("\u{e876}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // done
+                             button(text("\u{e876}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
                                 .on_press(Message::MarkTaskDone(task.id))
-                                .style(theme::button_ghost)
+                                .style(components::button::tertiary)
                                 .padding(5),
-                             button(text("\u{e872}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // delete/scrap
+                             button(text("\u{e872}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
                                 .on_press(Message::DeleteTask(task.id))
-                                .style(theme::button_ghost)
+                                .style(components::button::tertiary)
                                 .padding(5)
                          ]
                      ]
@@ -652,19 +689,19 @@ impl PomimiApp {
             Space::new().width(Length::Fill),
             row![
                 // Contrast Icon
-                button(text("\u{e3a1}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)) // contrast
+                button(text("\u{e3a1}").font(iced::Font::with_name("Material Symbols Outlined")).size(18))
                     .on_press(Message::ToggleTheme)
-                    .style(theme::button_secondary)
+                    .style(components::button::secondary)
                     .width(40).height(40),
                 // Settings Icon
-                button(text("\u{e8b8}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)) // settings
+                button(text("\u{e8b8}").font(iced::Font::with_name("Material Symbols Outlined")).size(18))
                     .on_press(Message::OpenModal(Modal::Settings))
-                    .style(theme::button_secondary)
+                    .style(components::button::secondary)
                     .width(40).height(40),
                 // Mini Mode Icon
-                button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)) // open_in_new (mini)
+                button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(18))
                     .on_press(Message::ToggleMiniMode)
-                    .style(theme::button_secondary)
+                    .style(components::button::secondary)
                     .width(40).height(40),
             ].spacing(8)
         ]

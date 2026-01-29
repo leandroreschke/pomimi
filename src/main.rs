@@ -2,6 +2,7 @@ mod cli;
 mod model;
 mod gui;
 mod theme;
+mod components;
 
 use std::env;
 use gui::PomimiApp;
