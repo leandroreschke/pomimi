@@ -30,63 +30,101 @@ impl Phase {
 
 fn play_sound() {
     std::thread::spawn(|| {
-        #[cfg(target_os = "windows")]
+        #[cfg(target_os = "macos")]
         {
-            let _ = std::process::Command::new("powershell")
-                .args(&["-c", "[console]::beep(800, 300)"])
+            let _ = std::process::Command::new("afplay")
+                .arg("/System/Library/Sounds/Glass.aiff")
                 .status();
         }
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "windows")]
         {
-            // Generate WAV
-            let sample_rate = 44100;
-            let duration_secs = 0.3;
-            let num_samples = (sample_rate as f32 * duration_secs) as usize;
-            let mut data = Vec::with_capacity(44 + num_samples * 2);
+            let _ = std::process::Command::new("powershell")
+                .args(&["-c", "(New-Object Media.SoundPlayer 'C:\\Windows\\Media\\notify.wav').PlaySync()"])
+                .status();
+        }
 
-            // RIFF
-            data.extend_from_slice(b"RIFF");
-            let file_size = 36 + num_samples * 2;
-            data.extend_from_slice(&(file_size as u32).to_le_bytes());
-            data.extend_from_slice(b"WAVE");
-
-            // fmt
-            data.extend_from_slice(b"fmt ");
-            data.extend_from_slice(&16u32.to_le_bytes()); // chunk size
-            data.extend_from_slice(&1u16.to_le_bytes()); // PCM
-            data.extend_from_slice(&1u16.to_le_bytes()); // Channels
-            data.extend_from_slice(&(sample_rate as u32).to_le_bytes()); // Sample Rate
-            let byte_rate = sample_rate * 2;
-            data.extend_from_slice(&(byte_rate as u32).to_le_bytes());
-            data.extend_from_slice(&2u16.to_le_bytes()); // Block align
-            data.extend_from_slice(&16u16.to_le_bytes()); // Bits per sample
-
-            // data
-            data.extend_from_slice(b"data");
-            let data_size = num_samples * 2;
-            data.extend_from_slice(&(data_size as u32).to_le_bytes());
-
-            // Sine wave 440Hz
-            for i in 0..num_samples {
-                let t = i as f32 / sample_rate as f32;
-                let amplitude = 0.2 * 32767.0;
-                let value = (amplitude * (2.0 * std::f32::consts::PI * 440.0 * t).sin()) as i16;
-                data.extend_from_slice(&value.to_le_bytes());
+        #[cfg(target_os = "linux")]
+        {
+            let paths = [
+                 "/usr/share/sounds/freedesktop/stereo/complete.oga",
+                 "/usr/share/sounds/gnome/default/alerts/glass.ogg"
+            ];
+            let mut played = false;
+            for path in paths {
+                 if std::path::Path::new(path).exists() {
+                     if let Ok(_) = std::process::Command::new("paplay").arg(path).status() {
+                         played = true;
+                         break;
+                     }
+                     if let Ok(_) = std::process::Command::new("aplay").arg(path).status() {
+                         played = true;
+                         break;
+                     }
+                 }
             }
 
-            let mut path = std::env::temp_dir();
-            path.push("pomimi_beep.wav");
-
-            if let Ok(_) = std::fs::write(&path, data) {
-                 #[cfg(target_os = "macos")]
-                 let _ = std::process::Command::new("afplay").arg(&path).status();
-
-                 #[cfg(target_os = "linux")]
-                 let _ = std::process::Command::new("aplay").arg("-q").arg(&path).status();
+            if !played {
+                // Fallback to generated sound
+                generate_and_play_beep();
             }
         }
+
+        // Fallback for others or if system sound failed?
+        // For macOS/Windows we assume system sounds exist.
+        // If not, we could also call generate_and_play_beep().
     });
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]
+fn generate_and_play_beep() {
+    let sample_rate = 44100;
+    let duration_secs = 1.5; // Increased to 1.5s
+    let num_samples = (sample_rate as f32 * duration_secs) as usize;
+    let mut data = Vec::with_capacity(44 + num_samples * 2);
+
+    // RIFF
+    data.extend_from_slice(b"RIFF");
+    let file_size = 36 + num_samples * 2;
+    data.extend_from_slice(&(file_size as u32).to_le_bytes());
+    data.extend_from_slice(b"WAVE");
+
+    // fmt
+    data.extend_from_slice(b"fmt ");
+    data.extend_from_slice(&16u32.to_le_bytes()); // chunk size
+    data.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    data.extend_from_slice(&1u16.to_le_bytes()); // Channels
+    data.extend_from_slice(&(sample_rate as u32).to_le_bytes()); // Sample Rate
+    let byte_rate = sample_rate * 2;
+    data.extend_from_slice(&(byte_rate as u32).to_le_bytes());
+    data.extend_from_slice(&2u16.to_le_bytes()); // Block align
+    data.extend_from_slice(&16u16.to_le_bytes()); // Bits per sample
+
+    // data
+    data.extend_from_slice(b"data");
+    let data_size = num_samples * 2;
+    data.extend_from_slice(&(data_size as u32).to_le_bytes());
+
+    // Sine wave 440Hz with simple envelope
+    for i in 0..num_samples {
+        let t = i as f32 / sample_rate as f32;
+        let mut amplitude = 0.2 * 32767.0;
+
+        // Fade out
+        if t > 1.0 {
+            amplitude *= (1.5 - t) / 0.5;
+        }
+
+        let value = (amplitude * (2.0 * std::f32::consts::PI * 440.0 * t).sin()) as i16;
+        data.extend_from_slice(&value.to_le_bytes());
+    }
+
+    let mut path = std::env::temp_dir();
+    path.push("pomimi_beep.wav");
+
+    if let Ok(_) = std::fs::write(&path, data) {
+         let _ = std::process::Command::new("aplay").arg("-q").arg(&path).status();
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +141,7 @@ pub struct TimerState {
     pub total_secs: u64,
     pub is_running: bool,
     pub cycles_completed: usize,
+    pub waiting_for_user: bool,
 }
 
 impl Default for TimerState {
@@ -113,6 +152,7 @@ impl Default for TimerState {
             total_secs: Phase::Focus.duration_secs(),
             is_running: false,
             cycles_completed: 0,
+            waiting_for_user: false,
         }
     }
 }
@@ -130,6 +170,7 @@ pub struct State {
     pub active_modal: Modal,
     pub primary_color: Color,
     pub is_dark_mode: bool,
+    pub require_confirmation: bool,
 }
 
 pub enum PomimiApp {
@@ -146,6 +187,7 @@ pub enum Message {
     TasksLoaded(Result<Vec<DbTask>, String>),
     SessionLoaded(Result<i64, String>),
     ColorLoaded(Result<Option<(f32, f32, f32)>, String>),
+    RequireConfirmationLoaded(Result<bool, String>),
     TaskOperationFailed(String),
     TaskOperationSuccess,
 
@@ -167,7 +209,9 @@ pub enum Message {
     OpenModal(Modal),
     CloseModal,
     SetColor(Color),
+    SetRequireConfirmation(bool),
     ToggleTheme,
+    DragWindow,
 
     None,
 }
@@ -236,6 +280,15 @@ impl PomimiApp {
                              },
                              Message::ColorLoaded
                         );
+                        let load_req_conf = Task::perform(
+                             {
+                                let db = db.clone();
+                                async move {
+                                    db.get_require_confirmation().await.map_err(|e| e.to_string())
+                                }
+                             },
+                             Message::RequireConfirmationLoaded
+                        );
 
                         *self = PomimiApp::Loaded(State {
                             db,
@@ -249,9 +302,10 @@ impl PomimiApp {
                             active_modal: Modal::None,
                             primary_color: theme::ORANGE,
                             is_dark_mode: true,
+                            require_confirmation: false,
                         });
 
-                        Task::batch(vec![load_tasks, load_session, load_color])
+                        Task::batch(vec![load_tasks, load_session, load_color, load_req_conf])
                     }
                     Message::DbConnected(Err(e)) => {
                         *self = PomimiApp::Error(format!("Failed to connect to database: {}", e));
@@ -294,6 +348,14 @@ impl PomimiApp {
                         eprintln!("Failed to load color: {}", e);
                         Task::none()
                     }
+                    Message::RequireConfirmationLoaded(Ok(val)) => {
+                        state.require_confirmation = val;
+                        Task::none()
+                    }
+                    Message::RequireConfirmationLoaded(Err(e)) => {
+                        eprintln!("Failed to load require confirmation: {}", e);
+                        Task::none()
+                    }
                     Message::TaskOperationFailed(e) => {
                         eprintln!("Task operation failed: {}", e);
                         Task::none()
@@ -308,7 +370,12 @@ impl PomimiApp {
 
                     // Timer
                     Message::ToggleTimer => {
-                        state.timer.is_running = !state.timer.is_running;
+                        if state.timer.waiting_for_user {
+                            state.timer.waiting_for_user = false;
+                            state.timer.is_running = true;
+                        } else {
+                            state.timer.is_running = !state.timer.is_running;
+                        }
                         Task::none()
                     }
                     Message::Tick => {
@@ -345,6 +412,11 @@ impl PomimiApp {
                                 }
                                 state.timer.remaining_secs = state.timer.phase.duration_secs();
                                 state.timer.total_secs = state.timer.phase.duration_secs();
+
+                                if state.require_confirmation {
+                                    state.timer.is_running = false;
+                                    state.timer.waiting_for_user = true;
+                                }
                             }
                         }
                         Task::none()
@@ -432,7 +504,7 @@ impl PomimiApp {
                             ViewMode::Full => {
                                 state.view_mode = ViewMode::Mini;
                                 let mini_size = Size::new(270.0, 120.0);
-                                let x = 1920.0 - mini_size.width - 20.0; 
+                                let x = 20.0;
                                 let y = 20.0;
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
@@ -480,9 +552,27 @@ impl PomimiApp {
                             }
                         )
                     }
+                    Message::SetRequireConfirmation(val) => {
+                        state.require_confirmation = val;
+                        let db = state.db.clone();
+                        Task::perform(
+                            async move {
+                                db.save_require_confirmation(val).await.map_err(|e| e.to_string())
+                            },
+                            |result| {
+                                if let Err(e) = result {
+                                    eprintln!("Failed to save preference: {}", e);
+                                }
+                                Message::None
+                            }
+                        )
+                    }
                     Message::ToggleTheme => {
                         state.is_dark_mode = !state.is_dark_mode;
                         Task::none()
+                    }
+                    Message::DragWindow => {
+                        window::latest().and_then(window::drag)
                     }
 
                     _ => Task::none(),
@@ -547,21 +637,33 @@ impl PomimiApp {
                         }
                     };
 
-                    column![
-                        // Timer + play/pause + exit button in row
-                        row![
-                            timer_view,
-                            button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined")))
-                                .on_press(Message::ToggleTimer).style(components::button::secondary),
-                            button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
-                                .on_press(Message::ToggleMiniMode)
-                                .style(components::button::tertiary)
-                        ].width(Length::Fill).align_y(iced::Alignment::Center),
-                        active_task_view,
-                    ]
-                    .align_x(iced::Alignment::Center)
-                    .spacing(10)
-                    .padding(10)
+                    iced::widget::mouse_area(
+                        container(
+                            column![
+                                // Timer + play/pause + exit button in row
+                                row![
+                                    timer_view,
+                                    button(text(
+                                        if state.timer.waiting_for_user { "\u{e5c8}" }
+                                        else if state.timer.is_running { "\u{e034}" }
+                                        else { "\u{e037}" }
+                                    ).font(iced::Font::with_name("Material Symbols Outlined")))
+                                        .on_press(Message::ToggleTimer).style(components::button::secondary),
+                                    button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
+                                        .on_press(Message::ToggleMiniMode)
+                                        .style(components::button::tertiary)
+                                ].width(Length::Fill).align_y(iced::Alignment::Center),
+                                active_task_view,
+                            ]
+                            .align_x(iced::Alignment::Center)
+                            .spacing(10)
+                            .padding(10)
+                        )
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .style(theme::container_default)
+                    )
+                    .on_press(Message::DragWindow)
                     .into()
 
                 } else {
@@ -626,6 +728,12 @@ impl PomimiApp {
                                  .style(components::button::secondary)
                                  .width(Length::Fill)
                                  .padding(10),
+
+                                 row![
+                                     components::checkbox::checkbox(state.require_confirmation, state.primary_color, Message::SetRequireConfirmation(!state.require_confirmation)),
+                                     text("Require confirmation before phase change").size(14)
+                                 ].spacing(10).align_y(iced::Alignment::Center),
+
                                  button(text("Done")).on_press(Message::CloseModal).style(components::button::primary).width(Length::Fill)
                             ].spacing(20)
                         },

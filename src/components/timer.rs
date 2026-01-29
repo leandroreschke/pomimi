@@ -66,7 +66,12 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
          col = col.push(
              button(
                  row![
-                     text(if state.timer.is_running {
+                     text(if state.timer.waiting_for_user {
+                         match state.timer.phase {
+                             Phase::Focus => "READY TO FOCUS",
+                             _ => "READY TO REST"
+                         }
+                     } else if state.timer.is_running {
                          "PAUSE"
                      } else {
                          match state.timer.phase {
