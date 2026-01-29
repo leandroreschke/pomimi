@@ -24,9 +24,9 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
                 )
                 .align_x(iced::Alignment::Center)
                 .align_y(iced::Alignment::Start)
-                .padding(iced::Padding { top: 4.0, right: 0.0, bottom: 0.0, left: 0.0 })
+                .padding(iced::Padding { top: -56.0, right: 0.0, bottom: 0.0, left: 0.0 })
                 .width(Length::Fill)
-                .height(Length::Fill),
+                .height(Length::Shrink),
                 container(
                     text(time_str)
                         .size(100)
@@ -36,10 +36,10 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
                 .align_x(iced::Alignment::Center)
                 .align_y(iced::Alignment::Center)
                 .width(Length::Fill)
-                .height(Length::Fill)
+                .height(Length::Shrink)
             ]
         )
-        .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 })
+        .padding(iced::Padding { top: 24.0, right: 0.0, bottom: 72.0, left: 0.0 })
         .into()
     } else {
         text(time_str)

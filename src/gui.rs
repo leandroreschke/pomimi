@@ -344,9 +344,7 @@ impl PomimiApp {
                             ViewMode::Full => {
                                 state.view_mode = ViewMode::Mini;
                                 let mini_size = Size::new(270.0, 120.0);
-                                // Assume 1920x1080 or use a reasonable default for positioning
-                                // In iced 0.13, there's no direct way to get monitor size at runtime
-                                let x = 1920.0 - mini_size.width - 20.0; // Assume standard monitor width
+                                let x = 1920.0 - mini_size.width - 20.0; 
                                 let y = 20.0;
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
@@ -441,14 +439,12 @@ impl PomimiApp {
                         // Timer + play/pause + exit button in row
                         row![
                             timer_view,
-                            Space::new().width(Length::Fill),
                             button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined")))
                                 .on_press(Message::ToggleTimer).style(components::button::secondary),
                             button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14))
                                 .on_press(Message::ToggleMiniMode)
                                 .style(components::button::tertiary)
                         ].width(Length::Fill).align_y(iced::Alignment::Center),
-                        // Focused task below
                         active_task_view,
                     ]
                     .align_x(iced::Alignment::Center)
