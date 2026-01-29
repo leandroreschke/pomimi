@@ -494,7 +494,7 @@ impl PomimiApp {
     pub fn view(&self) -> Element<'_, Message> {
         match self {
             PomimiApp::Loading => center(text("Loading...").size(30)).into(),
-            PomimiApp::Error(e) => center(text(format!("Error: {}", e)).size(20).color(Color::from_rgb(1.0, 0.0, 0.0))).into(),
+            PomimiApp::Error(e) => center(text(format!("Error: {}", e)).size(20).color(theme::DANGER_RED)).into(),
             PomimiApp::Loaded(state) => {
                 let timer_view = self.view_timer(state);
 
@@ -612,8 +612,8 @@ impl PomimiApp {
                                         .on_press(Message::SetColor(theme::ORANGE)).style(components::button::tertiary),
                                      button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::CYAN.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
                                         .on_press(Message::SetColor(theme::CYAN)).style(components::button::tertiary),
-                                     button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(Color::from_rgb(0.5, 0.0, 1.0).into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(Color::from_rgb(0.5, 0.0, 1.0))).style(components::button::tertiary),
+                                     button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::PURPLE.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
+                                        .on_press(Message::SetColor(theme::PURPLE)).style(components::button::tertiary),
                                  ].spacing(10),
                                  text("Theme").size(14),
                                  button(
@@ -649,7 +649,7 @@ impl PomimiApp {
                     .height(Length::Fill)
                     .align_x(iced::Alignment::Center)
                     .align_y(iced::Alignment::Center)
-                    .style(|_t: &Theme| container::Style { background: Some(Color { a: 0.8, ..Color::BLACK }.into()), ..container::Style::default() });
+                    .style(|_t: &Theme| container::Style { background: Some(Color { a: 0.8, ..theme::BLACK }.into()), ..container::Style::default() });
 
                     stack![
                         content,

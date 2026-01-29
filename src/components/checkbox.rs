@@ -37,7 +37,7 @@ pub fn checkbox<'a, Message: Clone + 'a>(
     .style(move |_theme: &Theme, status: button::Status| {
         let base = button::Style {
             background: None,
-            text_color: Color::TRANSPARENT,
+            text_color: theme::TRANSPARENT,
             border: iced::Border::default(),
             ..button::Style::default()
         };

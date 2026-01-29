@@ -1,11 +1,12 @@
 use iced::widget::button;
 use iced::{Border, Color, Theme};
+use crate::theme;
 
 pub fn primary(theme: &Theme, status: button::Status) -> button::Style {
     let palette = theme.palette();
     let base = button::Style {
         background: Some(palette.primary.into()),
-        text_color: if is_light(&palette.primary) { Color::BLACK } else { Color::WHITE },
+        text_color: if is_light(&palette.primary) { theme::BLACK } else { theme::WHITE },
         border: Border {
             radius: 0.0.into(),
             ..Border::default()
@@ -42,7 +43,7 @@ pub fn secondary(theme: &Theme, status: button::Status) -> button::Style {
     match status {
         button::Status::Hovered => button::Style {
             background: Some(palette.primary.into()),
-            text_color: if is_light(&palette.primary) { Color::BLACK } else { Color::WHITE },
+            text_color: if is_light(&palette.primary) { theme::BLACK } else { theme::WHITE },
             border: Border {
                 color: palette.primary,
                 width: 1.0,
@@ -52,7 +53,7 @@ pub fn secondary(theme: &Theme, status: button::Status) -> button::Style {
         },
         button::Status::Pressed => button::Style {
             background: Some(scale_alpha(palette.primary, 0.8).into()),
-            text_color: if is_light(&palette.primary) { Color::BLACK } else { Color::WHITE },
+            text_color: if is_light(&palette.primary) { theme::BLACK } else { theme::WHITE },
             border: Border {
                 color: palette.primary,
                 width: 1.0,
@@ -76,12 +77,12 @@ pub fn tertiary(theme: &Theme, status: button::Status) -> button::Style {
     match status {
         button::Status::Hovered => button::Style {
             background: Some(palette.primary.into()),
-            text_color: if is_light(&palette.primary) { Color::BLACK } else { Color::WHITE },
+            text_color: if is_light(&palette.primary) { theme::BLACK } else { theme::WHITE },
             ..base
         },
         button::Status::Pressed => button::Style {
             background: Some(scale_alpha(palette.primary, 0.8).into()),
-            text_color: if is_light(&palette.primary) { Color::BLACK } else { Color::WHITE },
+            text_color: if is_light(&palette.primary) { theme::BLACK } else { theme::WHITE },
             ..base
         },
         _ => base,
