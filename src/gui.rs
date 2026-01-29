@@ -359,7 +359,7 @@ impl PomimiApp {
                                 state.view_mode = ViewMode::Mini;
                                 window::get_latest().and_then(|id| {
                                     Task::batch(vec![
-                                        window::resize(id, Size::new(300.0, 100.0)),
+                                        window::resize(id, Size::new(270.0, 120.0)),
                                         window::change_level(id, window::Level::AlwaysOnTop)
                                     ])
                                 })
@@ -437,14 +437,21 @@ impl PomimiApp {
                         horizontal_space().into()
                     };
 
-                    row![
-                         timer_view,
-                         active_task_view,
-                         button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // open_in_new / open_in_full icon
-                            .on_press(Message::ToggleMiniMode)
-                            .style(theme::button_ghost)
+                    column![
+                        // Timer + play/pause + exit button in row
+                        row![
+                            timer_view,
+                            horizontal_space(),
+                            button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined"))) // pause / play_arrow
+                                .on_press(Message::ToggleTimer).style(theme::button_secondary),
+                            button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // open_in_new / open_in_full icon
+                                .on_press(Message::ToggleMiniMode)
+                                .style(theme::button_ghost)
+                        ].width(Length::Fill).align_y(iced::Alignment::Center),
+                        // Focused task below
+                        active_task_view,
                     ]
-                    .align_y(iced::Alignment::Center)
+                    .align_x(iced::Alignment::Center)
                     .spacing(10)
                     .padding(10)
                     .into()
@@ -571,13 +578,6 @@ impl PomimiApp {
                  .padding(15)
                  .style(theme::button_primary)
                  .on_press(Message::ToggleTimer)
-             );
-        } else {
-             col = col.push(
-                 row![
-                     button(text(if state.timer.is_running { "\u{e034}" } else { "\u{e037}" }).font(iced::Font::with_name("Material Symbols Outlined"))) // pause / play_arrow
-                        .on_press(Message::ToggleTimer).style(theme::button_secondary),
-                 ].spacing(10).padding(5)
              );
         }
 
