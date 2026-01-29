@@ -33,6 +33,7 @@ pub fn checkbox<'a, Message: Clone + 'a>(
             ..container::Style::default()
         })
     )
+    .padding(0)
     .style(move |_theme: &Theme, status: button::Status| {
         let base = button::Style {
             background: None,
