@@ -359,7 +359,7 @@ impl PomimiApp {
                                 state.view_mode = ViewMode::Mini;
                                 window::get_latest().and_then(|id| {
                                     Task::batch(vec![
-                                        window::resize(id, Size::new(350.0, 320.0)),
+                                        window::resize(id, Size::new(300.0, 100.0)),
                                         window::change_level(id, window::Level::AlwaysOnTop)
                                     ])
                                 })
@@ -368,7 +368,7 @@ impl PomimiApp {
                                 state.view_mode = ViewMode::Full;
                                 window::get_latest().and_then(|id| {
                                     Task::batch(vec![
-                                        window::resize(id, Size::new(800.0, 600.0)),
+                                        window::resize(id, Size::new(380.0, 800.0)),
                                         window::change_level(id, window::Level::Normal)
                                     ])
                                 })
@@ -437,14 +437,14 @@ impl PomimiApp {
                         horizontal_space().into()
                     };
 
-                    column![
+                    row![
                          timer_view,
                          active_task_view,
                          button(text("\u{e895}").font(iced::Font::with_name("Material Symbols Outlined")).size(14)) // open_in_new / open_in_full icon
                             .on_press(Message::ToggleMiniMode)
                             .style(theme::button_ghost)
                     ]
-                    .align_x(iced::Alignment::Center)
+                    .align_y(iced::Alignment::Center)
                     .spacing(10)
                     .padding(10)
                     .into()
@@ -457,7 +457,6 @@ impl PomimiApp {
                         timer_view,
                         horizontal_space().height(20),
                         tasks_view,
-                        horizontal_space().height(Length::Fill),
                         footer
                     ]
                     .padding(40)
