@@ -151,4 +151,28 @@ impl Database {
         }
         Ok(None)
     }
+
+    pub async fn save_require_confirmation(&self, require: bool) -> Result<(), sqlx::Error> {
+        let val = if require { "true" } else { "false" };
+        sqlx::query(
+            "INSERT OR REPLACE INTO preferences (key, value) VALUES ('require_confirmation', ?)"
+        )
+        .bind(val)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_require_confirmation(&self) -> Result<bool, sqlx::Error> {
+        let result: Option<String> = sqlx::query_scalar(
+            "SELECT value FROM preferences WHERE key = 'require_confirmation'"
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(val_str) = result {
+            return Ok(val_str == "true");
+        }
+        Ok(false) // Default to false
+    }
 }
