@@ -534,6 +534,17 @@ impl PomimiApp {
                                      button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(Color::from_rgb(0.5, 0.0, 1.0).into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
                                         .on_press(Message::SetColor(Color::from_rgb(0.5, 0.0, 1.0))).style(components::button::tertiary),
                                  ].spacing(10),
+                                 text("Theme").size(14),
+                                 button(
+                                     row![
+                                         text(if state.is_dark_mode { "\u{e518}" } else { "\u{e51c}" }).font(iced::Font::with_name("Material Symbols Outlined")).size(18),
+                                         text(if state.is_dark_mode { "Dark Mode" } else { "Light Mode" }).size(14)
+                                     ].spacing(10).align_y(iced::Alignment::Center)
+                                 )
+                                 .on_press(Message::ToggleTheme)
+                                 .style(components::button::secondary)
+                                 .width(Length::Fill)
+                                 .padding(10),
                                  button(text("Done")).on_press(Message::CloseModal).style(components::button::primary).width(Length::Fill)
                             ].spacing(20)
                         },
@@ -647,12 +658,6 @@ impl PomimiApp {
             stats,
             Space::new().width(Length::Fill),
             row![
-                // Contrast Icon
-                button(center(text("\u{e3a1}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)))
-                    .on_press(Message::ToggleTheme)
-                    .style(components::button::secondary)
-                    .padding(0)
-                    .width(40).height(40),
                 // Settings Icon
                 button(center(text("\u{e8b8}").font(iced::Font::with_name("Material Symbols Outlined")).size(18)))
                     .on_press(Message::OpenModal(Modal::Settings))
