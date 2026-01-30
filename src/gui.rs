@@ -1,4 +1,4 @@
-use iced::{Element, Task, Theme, Subscription, time, Length, window, Size, Color};
+use iced::{Element, Task, Theme, Subscription, time, Length, window, Size, Color, Point, Event};
 use iced::widget::{column, container, text, button, center, row, text_input, scrollable, Space, stack};
 use crate::theme;
 use crate::model::{Database, Task as DbTask};
@@ -132,6 +132,7 @@ pub enum Modal {
     None,
     AddTask,
     Settings,
+    TimerSettings,
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +172,8 @@ pub struct State {
     pub primary_color: Color,
     pub is_dark_mode: bool,
     pub require_confirmation: bool,
+    pub window_position: Point,
+    pub window_size: Size,
 }
 
 pub enum PomimiApp {
@@ -188,6 +191,7 @@ pub enum Message {
     SessionLoaded(Result<i64, String>),
     ColorLoaded(Result<Option<(f32, f32, f32)>, String>),
     RequireConfirmationLoaded(Result<bool, String>),
+    ThemeLoaded(Result<Option<bool>, String>),
     TaskOperationFailed(String),
     TaskOperationSuccess,
 
@@ -195,6 +199,7 @@ pub enum Message {
     ToggleTimer,
     Tick,
     SetDuration(u64),
+    ResetTimer,
 
     // Tasks
     UpdateNewTaskInput(String),
@@ -212,6 +217,8 @@ pub enum Message {
     SetRequireConfirmation(bool),
     ToggleTheme,
     DragWindow,
+    WindowMoved(Point),
+    WindowResized(Size),
 
     None,
 }
@@ -289,6 +296,15 @@ impl PomimiApp {
                              },
                              Message::RequireConfirmationLoaded
                         );
+                        let load_theme = Task::perform(
+                             {
+                                let db = db.clone();
+                                async move {
+                                    db.get_theme_preference().await.map_err(|e| e.to_string())
+                                }
+                             },
+                             Message::ThemeLoaded
+                        );
 
                         *self = PomimiApp::Loaded(State {
                             db,
@@ -303,9 +319,11 @@ impl PomimiApp {
                             primary_color: theme::ORANGE,
                             is_dark_mode: true,
                             require_confirmation: false,
+                            window_position: Point::ORIGIN,
+                            window_size: Size::new(380.0, 800.0),
                         });
 
-                        Task::batch(vec![load_tasks, load_session, load_color, load_req_conf])
+                        Task::batch(vec![load_tasks, load_session, load_color, load_req_conf, load_theme])
                     }
                     Message::DbConnected(Err(e)) => {
                         *self = PomimiApp::Error(format!("Failed to connect to database: {}", e));
@@ -354,6 +372,15 @@ impl PomimiApp {
                     }
                     Message::RequireConfirmationLoaded(Err(e)) => {
                         eprintln!("Failed to load require confirmation: {}", e);
+                        Task::none()
+                    }
+                    Message::ThemeLoaded(Ok(Some(is_dark))) => {
+                        state.is_dark_mode = is_dark;
+                        Task::none()
+                    }
+                    Message::ThemeLoaded(Ok(None)) => Task::none(),
+                    Message::ThemeLoaded(Err(e)) => {
+                        eprintln!("Failed to load theme: {}", e);
                         Task::none()
                     }
                     Message::TaskOperationFailed(e) => {
@@ -422,26 +449,19 @@ impl PomimiApp {
                         Task::none()
                     }
                     Message::SetDuration(secs) => {
-                        // Custom logic for 50/10 vs 25/5 could go here,
-                        // but simplified: just setting focus duration and derived break?
-                        // Requirement says "50/10, 25/5".
-                        // If 50m (3000s) -> Break 10m.
-                        // If 25m (1500s) -> Break 5m.
                         state.timer.is_running = false;
                         state.timer.phase = Phase::Focus;
                         state.timer.remaining_secs = secs;
                         state.timer.total_secs = secs;
-                        // Note: actual break duration logic is in Tick when switching phase.
-                        // Ideally we should store config for cycle lengths.
-                        // For now, hardcoded standard or simple override.
-                        // Let's assume standard unless customized.
-                        // Since we just set remaining, we need to ensure next break is correct.
-                        // But Phase enum hardcodes durations.
-                        // If we want dynamic phases, we need to change Phase impl or TimerState.
-                        // For this task, I'll stick to visual buttons and maybe simple state update?
-                        // Let's keep it simple: 25/5 is default Phase logic.
-                        // 50/10 would require changing Phase definition or state.
-                        // I'll skip implementing full custom duration logic deeply for now to focus on UI request.
+                        state.active_modal = Modal::None;
+                        Task::none()
+                    }
+                    Message::ResetTimer => {
+                        state.timer.is_running = false;
+                        state.timer.remaining_secs = state.timer.phase.duration_secs();
+                        state.timer.total_secs = state.timer.phase.duration_secs();
+                        state.timer.waiting_for_user = false;
+                        state.active_modal = Modal::None;
                         Task::none()
                     }
 
@@ -504,26 +524,38 @@ impl PomimiApp {
                             ViewMode::Full => {
                                 state.view_mode = ViewMode::Mini;
                                 let mini_size = Size::new(270.0, 120.0);
-                                let x = 20.0;
-                                let y = 20.0;
+                                let current_pos = state.window_position;
+                                let current_size = state.window_size;
+                                // Anchor Bottom-Left logic: y_new = y_old + h_old - h_new
+                                let new_y = current_pos.y + current_size.height - mini_size.height;
+                                let new_pos = Point::new(current_pos.x, new_y);
+
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
                                         window::resize(id, mini_size),
                                         window::set_level(id, window::Level::AlwaysOnTop),
                                         window::toggle_decorations(id),
                                         window::set_resizable(id, false),
-                                        window::move_to(id, iced::Point::new(x, y))
+                                        window::move_to(id, new_pos)
                                     ])
                                 })
                             }
                             ViewMode::Mini => {
                                 state.view_mode = ViewMode::Full;
-                                window::latest().and_then(|id| {
+                                let full_size = Size::new(380.0, 800.0);
+                                let current_pos = state.window_position;
+                                let current_size = state.window_size;
+                                // Anchor Bottom-Left logic
+                                let new_y = current_pos.y + current_size.height - full_size.height;
+                                let new_pos = Point::new(current_pos.x, new_y);
+
+                                window::latest().and_then(move |id| {
                                     Task::batch(vec![
-                                        window::resize(id, Size::new(380.0, 800.0)),
+                                        window::resize(id, full_size),
                                         window::set_level(id, window::Level::Normal),
                                         window::toggle_decorations(id),
-                                        window::set_resizable(id, true)
+                                        window::set_resizable(id, true),
+                                        window::move_to(id, new_pos)
                                     ])
                                 })
                             }
@@ -569,10 +601,30 @@ impl PomimiApp {
                     }
                     Message::ToggleTheme => {
                         state.is_dark_mode = !state.is_dark_mode;
-                        Task::none()
+                        let db = state.db.clone();
+                        let is_dark = state.is_dark_mode;
+                        Task::perform(
+                            async move {
+                                db.save_theme(is_dark).await.map_err(|e| e.to_string())
+                            },
+                            |result| {
+                                if let Err(e) = result {
+                                    eprintln!("Failed to save theme: {}", e);
+                                }
+                                Message::None
+                            }
+                        )
                     }
                     Message::DragWindow => {
                         window::latest().and_then(window::drag)
+                    }
+                    Message::WindowMoved(point) => {
+                        state.window_position = point;
+                        Task::none()
+                    }
+                    Message::WindowResized(size) => {
+                        state.window_size = size;
+                        Task::none()
                     }
 
                     _ => Task::none(),
@@ -661,7 +713,17 @@ impl PomimiApp {
                         )
                         .width(Length::Fill)
                         .height(Length::Fill)
-                        .style(theme::container_default)
+                        .style(|t: &Theme| {
+                            let base = theme::container_default(t);
+                            container::Style {
+                                border: iced::Border {
+                                    radius: 20.0.into(),
+                                    width: 1.0,
+                                    color: t.palette().text,
+                                },
+                                ..base
+                            }
+                        })
                     )
                     .on_press(Message::DragWindow)
                     .into()
@@ -706,17 +768,23 @@ impl PomimiApp {
                             ].spacing(20)
                         },
                         Modal::Settings => {
+                            let color_btn = |color: Color| {
+                                button(container(Space::new().width(20).height(20)).style(move |_: &Theme| container::Style{ background: Some(color.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
+                                    .on_press(Message::SetColor(color)).style(components::button::tertiary)
+                            };
+
                             column![
                                 text("Settings").size(18).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
                                 text("Accent Color").size(14),
                                 row![
-                                     button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::ORANGE.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(theme::ORANGE)).style(components::button::tertiary),
-                                     button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::CYAN.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(theme::CYAN)).style(components::button::tertiary),
-                                     button(container(Space::new().width(20).height(20)).style(|_: &Theme| container::Style{ background: Some(theme::PURPLE.into()), border: iced::Border{radius: 20.0.into(), ..iced::Border::default()}, ..container::Style::default() }))
-                                        .on_press(Message::SetColor(theme::PURPLE)).style(components::button::tertiary),
-                                 ].spacing(10),
+                                     color_btn(theme::ORANGE),
+                                     color_btn(theme::GREEN),
+                                     color_btn(theme::BLUE),
+                                     color_btn(theme::PINK),
+                                     color_btn(theme::YELLOW),
+                                     color_btn(theme::CYAN),
+                                     color_btn(theme::PURPLE),
+                                 ].spacing(10).wrap(),
                                  text("Theme").size(14),
                                  button(
                                      row![
@@ -735,6 +803,20 @@ impl PomimiApp {
                                  ].spacing(10).align_y(iced::Alignment::Center),
 
                                  button(text("Done")).on_press(Message::CloseModal).style(components::button::primary).width(Length::Fill)
+                            ].spacing(20)
+                        },
+                        Modal::TimerSettings => {
+                             column![
+                                text("Timer Settings").size(18).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
+                                text("Strategy").size(14),
+                                row![
+                                    button(text("25/5")).on_press(Message::SetDuration(25*60)).style(components::button::secondary).width(Length::Fill),
+                                    button(text("50/10")).on_press(Message::SetDuration(50*60)).style(components::button::secondary).width(Length::Fill),
+                                ].spacing(10),
+                                Space::new().height(10),
+                                button(text("Reset Timer")).on_press(Message::ResetTimer).style(components::button::secondary).width(Length::Fill),
+                                Space::new().height(10),
+                                button(text("Close")).on_press(Message::CloseModal).style(components::button::primary).width(Length::Fill)
                             ].spacing(20)
                         },
                         Modal::None => column![].into(),
@@ -812,9 +894,11 @@ impl PomimiApp {
                                      text(&task.text)
                                          .size(14)
                                          .font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
-                                         .color(if is_active { state.primary_color } else { theme::TEXT_DIM })
+                                         .style(move |t: &Theme| text::Style {
+                                             color: if is_active { Some(t.palette().primary) } else { Some(theme::TEXT_DIM) },
+                                             ..text::Style::default()
+                                         })
                                          .wrapping(text::Wrapping::None),
-                                     text(if is_active { "Active Task" } else { "Focus on this task" }).size(10).color(theme::TEXT_DIM)
                                  ].spacing(2)
                              )
                              .width(Length::Fill)
@@ -875,11 +959,21 @@ impl PomimiApp {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
+        let window_events = iced::event::listen().map(|event| match event {
+            Event::Window(window::Event::Moved(point)) => Message::WindowMoved(point),
+            Event::Window(window::Event::Resized(size)) => Message::WindowResized(size),
+            _ => Message::None,
+        });
+
         match self {
-            PomimiApp::Loaded(state) if state.timer.is_running => {
-                time::every(Duration::from_secs(1)).map(|_| Message::Tick)
+            PomimiApp::Loaded(state) => {
+                let mut subs = vec![window_events];
+                if state.timer.is_running {
+                    subs.push(time::every(Duration::from_secs(1)).map(|_| Message::Tick));
+                }
+                Subscription::batch(subs)
             }
-            _ => Subscription::none(),
+            _ => window_events,
         }
     }
 

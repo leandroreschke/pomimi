@@ -40,6 +40,7 @@ fn main() -> iced::Result {
             .window(iced::window::Settings {
                 size: iced::Size::new(380.0, 800.0),
                 icon,
+                transparent: true,
                 ..Default::default()
             })
             .run()
