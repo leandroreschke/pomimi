@@ -409,20 +409,23 @@ impl PomimiApp {
                                     state.session_focus_seconds += 1;
                                 }
                             } else {
-                                // Play sound
                                 play_sound();
 
                                 let completed_phase = state.timer.phase.clone();
+                                let session_task = if completed_phase == Phase::Focus {
+                                    state.timer.cycles_completed += 1;
+                                    let db = state.db.clone();
+                                    let duration = state.timer.total_secs as i64;
+                                    Some(Task::perform(
+                                        async move { db.add_session(duration).await },
+                                        |_| Message::None
+                                    ))
+                                } else {
+                                    None
+                                };
+
                                 match completed_phase {
                                     Phase::Focus => {
-                                        state.timer.cycles_completed += 1;
-                                        let db = state.db.clone();
-                                        let duration = completed_phase.duration_secs() as i64;
-                                        let _ = Task::perform(
-                                            async move { db.add_session(duration).await },
-                                            |_| Message::None
-                                        );
-
                                         if state.timer.cycles_completed % 4 == 0 {
                                             state.timer.phase = Phase::LongBreak;
                                         } else {
@@ -440,6 +443,8 @@ impl PomimiApp {
                                     state.timer.is_running = false;
                                     state.timer.waiting_for_user = true;
                                 }
+
+                                return session_task.unwrap_or_else(Task::none);
                             }
                         }
                         Task::none()
@@ -449,13 +454,15 @@ impl PomimiApp {
                         state.timer.phase = Phase::Focus;
                         state.timer.remaining_secs = secs;
                         state.timer.total_secs = secs;
+                        state.timer.cycles_completed = 0;
                         state.active_modal = Modal::None;
                         Task::none()
                     }
                     Message::ResetTimer => {
                         state.timer.is_running = false;
-                        state.timer.remaining_secs = state.timer.phase.duration_secs();
-                        state.timer.total_secs = state.timer.phase.duration_secs();
+                        state.timer.phase = Phase::Focus;
+                        state.timer.remaining_secs = Phase::Focus.duration_secs();
+                        state.timer.total_secs = Phase::Focus.duration_secs();
                         state.timer.waiting_for_user = false;
                         state.active_modal = Modal::None;
                         Task::none()
@@ -522,11 +529,14 @@ impl PomimiApp {
                                 let mini_size = Size::new(270.0, 120.0);
                                 let current_pos = state.window_position;
                                 let current_size = state.window_size;
-                                // Anchor Top-Right logic:
-                                // new_x = old_x + old_width - new_width
-                                // new_y = old_y (Top stays same)
-                                let new_x = current_pos.x + current_size.width - mini_size.width;
-                                let new_pos = Point::new(new_x, current_pos.y);
+                                let center_x = current_pos.x + current_size.width / 2.0;
+                                let center_y = current_pos.y + current_size.height / 2.0;
+                                let new_pos = Point::new(
+                                    center_x - mini_size.width / 2.0,
+                                    center_y - mini_size.height / 2.0
+                                );
+                                state.window_size = mini_size;
+                                state.window_position = new_pos;
 
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
@@ -543,11 +553,14 @@ impl PomimiApp {
                                 let full_size = Size::new(380.0, 800.0);
                                 let current_pos = state.window_position;
                                 let current_size = state.window_size;
-                                // Anchor Top-Right logic:
-                                // new_x = old_x + old_width - new_width
-                                // new_y = old_y
-                                let new_x = current_pos.x + current_size.width - full_size.width;
-                                let new_pos = Point::new(new_x, current_pos.y);
+                                let center_x = current_pos.x + current_size.width / 2.0;
+                                let center_y = current_pos.y + current_size.height / 2.0;
+                                let new_pos = Point::new(
+                                    center_x - full_size.width / 2.0,
+                                    center_y - full_size.height / 2.0
+                                );
+                                state.window_size = full_size;
+                                state.window_position = new_pos;
 
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
@@ -826,7 +839,6 @@ impl PomimiApp {
                     let overlay = container(
                         container(modal_content)
                             .padding(20)
-                            .style(theme::container_default) // Needs border to separate from bg? Using default for now
                             .style(|t: &Theme| {
                                 let base = theme::container_default(t);
                                 container::Style {

@@ -74,33 +74,31 @@ fn ensure_readable(foreground: Color, background: Color) -> Color {
     }
 
     if bg_lum < 0.5 {
-        // Dark background -> Lighten
         let mut new_color = foreground;
-        for _ in 0..5 {
+        for _ in 0..10 {
             new_color.r = (new_color.r + 0.1).min(1.0);
             new_color.g = (new_color.g + 0.1).min(1.0);
             new_color.b = (new_color.b + 0.1).min(1.0);
-            if luminance(new_color) > bg_lum { // Re-check contrast
-                 let l1 = luminance(new_color);
-                 let ratio = (l1 + 0.05) / (bg_lum + 0.05);
-                 if ratio >= 4.5 { return new_color; }
+            let l1 = luminance(new_color);
+            let ratio = (l1 + 0.05) / (bg_lum + 0.05);
+            if ratio >= 4.5 {
+                return new_color;
             }
         }
-        foreground // Return original if fails (or maybe WHITE?)
+        WHITE
     } else {
-         // Light background -> Darken
         let mut new_color = foreground;
-        for _ in 0..5 {
+        for _ in 0..10 {
             new_color.r = (new_color.r - 0.1).max(0.0);
             new_color.g = (new_color.g - 0.1).max(0.0);
             new_color.b = (new_color.b - 0.1).max(0.0);
-            if luminance(new_color) < bg_lum {
-                 let l1 = luminance(new_color);
-                 let ratio = (bg_lum + 0.05) / (l1 + 0.05);
-                 if ratio >= 4.5 { return new_color; }
+            let l1 = luminance(new_color);
+            let ratio = (bg_lum + 0.05) / (l1 + 0.05);
+            if ratio >= 4.5 {
+                return new_color;
             }
         }
-        foreground
+        BLACK
     }
 }
 
