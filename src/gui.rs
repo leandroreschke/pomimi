@@ -726,6 +726,7 @@ impl PomimiApp {
                         )
                         .width(Length::Fill)
                         .height(Length::Fill)
+                        .clip(true)
                         .style(|t: &Theme| {
                             let base = theme::container_default(t);
                             container::Style {
