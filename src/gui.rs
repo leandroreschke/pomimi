@@ -3,7 +3,7 @@ use iced::widget::{column, container, text, button, center, row, text_input, scr
 use crate::theme;
 use crate::model::{Database, Task as DbTask};
 use crate::components;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ViewMode {
@@ -139,6 +139,8 @@ pub struct TimerState {
     pub is_running: bool,
     pub cycles_completed: usize,
     pub waiting_for_user: bool,
+    pub target_time: Option<Instant>,
+    pub elapsed_secs: u64,
 }
 
 impl Default for TimerState {
@@ -150,6 +152,8 @@ impl Default for TimerState {
             is_running: false,
             cycles_completed: 0,
             waiting_for_user: false,
+            target_time: None,
+            elapsed_secs: 0,
         }
     }
 }
@@ -396,73 +400,114 @@ impl PomimiApp {
                         if state.timer.waiting_for_user {
                             state.timer.waiting_for_user = false;
                             state.timer.is_running = true;
+                            state.timer.target_time = Some(Instant::now() + Duration::from_secs(state.timer.remaining_secs));
                         } else {
-                            state.timer.is_running = !state.timer.is_running;
+                            if state.timer.is_running {
+                                state.timer.is_running = false;
+                                // Update remaining_secs one last time to capture partial progress
+                                if let Some(target) = state.timer.target_time {
+                                    let now = Instant::now();
+                                    if now < target {
+                                        state.timer.remaining_secs = (target - now).as_secs();
+                                    } else {
+                                        state.timer.remaining_secs = 0;
+                                    }
+                                }
+                                state.timer.target_time = None;
+                            } else {
+                                state.timer.is_running = true;
+                                state.timer.target_time = Some(Instant::now() + Duration::from_secs(state.timer.remaining_secs));
+                            }
                         }
                         Task::none()
                     }
                     Message::Tick => {
                         if state.timer.is_running {
-                            if state.timer.remaining_secs > 0 {
-                                state.timer.remaining_secs -= 1;
-                                if state.timer.phase == Phase::Focus {
-                                    state.session_focus_seconds += 1;
-                                }
-                            } else {
-                                play_sound();
-
-                                let completed_phase = state.timer.phase.clone();
-                                let session_task = if completed_phase == Phase::Focus {
-                                    state.timer.cycles_completed += 1;
-                                    let db = state.db.clone();
-                                    let duration = state.timer.total_secs as i64;
-                                    Some(Task::perform(
-                                        async move { db.add_session(duration).await },
-                                        |_| Message::None
-                                    ))
+                            if let Some(target) = state.timer.target_time {
+                                let now = Instant::now();
+                                if now < target {
+                                    let new_remaining = (target - now).as_secs();
+                                    // Calculate delta for session logging
+                                    let delta = state.timer.remaining_secs.saturating_sub(new_remaining);
+                                    state.timer.remaining_secs = new_remaining;
+                                    state.timer.elapsed_secs += delta;
+                                    if state.timer.phase == Phase::Focus {
+                                        state.session_focus_seconds += delta as i64;
+                                    }
                                 } else {
-                                    None
-                                };
+                                    // Timer expired
+                                    let delta = state.timer.remaining_secs;
+                                    state.timer.remaining_secs = 0;
+                                    state.timer.elapsed_secs += delta;
+                                    if state.timer.phase == Phase::Focus {
+                                        state.session_focus_seconds += delta as i64;
+                                    }
+                                    
+                                    play_sound();
 
-                                match completed_phase {
-                                    Phase::Focus => {
-                                        if state.timer.cycles_completed % 4 == 0 {
-                                            state.timer.phase = Phase::LongBreak;
-                                        } else {
-                                            state.timer.phase = Phase::ShortBreak;
+                                    let completed_phase = state.timer.phase.clone();
+                                    let session_task = if completed_phase == Phase::Focus {
+                                        state.timer.cycles_completed += 1;
+                                        let db = state.db.clone();
+                                        // Log the actual elapsed duration as the session length
+                                        let duration = state.timer.elapsed_secs as i64;
+                                        Some(Task::perform(
+                                            async move { db.add_session(duration).await },
+                                            |_| Message::None
+                                        ))
+                                    } else {
+                                        None
+                                    };
+
+                                    match completed_phase {
+                                        Phase::Focus => {
+                                            if state.timer.cycles_completed % 4 == 0 {
+                                                state.timer.phase = Phase::LongBreak;
+                                            } else {
+                                                state.timer.phase = Phase::ShortBreak;
+                                            }
+                                        }
+                                        Phase::ShortBreak | Phase::LongBreak => {
+                                            state.timer.phase = Phase::Focus;
                                         }
                                     }
-                                    Phase::ShortBreak | Phase::LongBreak => {
-                                        state.timer.phase = Phase::Focus;
+                                    state.timer.remaining_secs = state.timer.phase.duration_secs();
+                                    state.timer.total_secs = state.timer.phase.duration_secs();
+                                    state.timer.elapsed_secs = 0;
+
+                                    if state.require_confirmation {
+                                        state.timer.is_running = false;
+                                        state.timer.waiting_for_user = true;
+                                        state.timer.target_time = None;
+                                    } else {
+                                        // Auto-start next phase
+                                        state.timer.target_time = Some(Instant::now() + Duration::from_secs(state.timer.remaining_secs));
                                     }
-                                }
-                                state.timer.remaining_secs = state.timer.phase.duration_secs();
-                                state.timer.total_secs = state.timer.phase.duration_secs();
 
-                                if state.require_confirmation {
-                                    state.timer.is_running = false;
-                                    state.timer.waiting_for_user = true;
+                                    return session_task.unwrap_or_else(Task::none);
                                 }
-
-                                return session_task.unwrap_or_else(Task::none);
                             }
                         }
                         Task::none()
                     }
                     Message::SetDuration(secs) => {
                         state.timer.is_running = false;
+                        state.timer.target_time = None;
                         state.timer.phase = Phase::Focus;
                         state.timer.remaining_secs = secs;
                         state.timer.total_secs = secs;
+                        state.timer.elapsed_secs = 0;
                         state.timer.cycles_completed = 0;
                         state.active_modal = Modal::None;
                         Task::none()
                     }
                     Message::ResetTimer => {
                         state.timer.is_running = false;
+                        state.timer.target_time = None;
                         state.timer.phase = Phase::Focus;
                         state.timer.remaining_secs = Phase::Focus.duration_secs();
                         state.timer.total_secs = Phase::Focus.duration_secs();
+                        state.timer.elapsed_secs = 0;
                         state.timer.waiting_for_user = false;
                         state.active_modal = Modal::None;
                         Task::none()

@@ -110,8 +110,7 @@ impl Database {
         )
         .bind(today)
         .fetch_one(&self.pool)
-        .await
-        .unwrap_or(None); // fetch_one might fail if table empty? No, aggregation always returns a row.
+        .await?;
 
         // Actually fetch_one returns Result<Row>. query_scalar returns Result<T>.
         // If no rows match, SUM returns NULL, which maps to Option::None.
