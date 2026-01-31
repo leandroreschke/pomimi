@@ -529,23 +529,23 @@ impl PomimiApp {
                                 let mini_size = Size::new(270.0, 120.0);
                                 let current_pos = state.window_position;
                                 let current_size = state.window_size;
-                                let center_x = current_pos.x + current_size.width / 2.0;
-                                let center_y = current_pos.y + current_size.height / 2.0;
-                                let new_pos = Point::new(
-                                    center_x - mini_size.width / 2.0,
-                                    center_y - mini_size.height / 2.0
-                                );
                                 state.window_size = mini_size;
-                                state.window_position = new_pos;
 
                                 window::latest().and_then(move |id| {
-                                    Task::batch(vec![
+                                    let mut tasks = vec![
                                         window::resize(id, mini_size),
                                         window::set_level(id, window::Level::AlwaysOnTop),
                                         window::toggle_decorations(id),
                                         window::set_resizable(id, false),
-                                        window::move_to(id, new_pos)
-                                    ])
+                                    ];
+                                    
+                                    if current_pos != Point::ORIGIN {
+                                        let new_x = current_pos.x + current_size.width - mini_size.width;
+                                        let new_pos = Point::new(new_x, current_pos.y);
+                                        tasks.push(window::move_to(id, new_pos));
+                                    }
+                                    
+                                    Task::batch(tasks)
                                 })
                             }
                             ViewMode::Mini => {
@@ -553,23 +553,23 @@ impl PomimiApp {
                                 let full_size = Size::new(380.0, 800.0);
                                 let current_pos = state.window_position;
                                 let current_size = state.window_size;
-                                let center_x = current_pos.x + current_size.width / 2.0;
-                                let center_y = current_pos.y + current_size.height / 2.0;
-                                let new_pos = Point::new(
-                                    center_x - full_size.width / 2.0,
-                                    center_y - full_size.height / 2.0
-                                );
                                 state.window_size = full_size;
-                                state.window_position = new_pos;
 
                                 window::latest().and_then(move |id| {
-                                    Task::batch(vec![
+                                    let mut tasks = vec![
                                         window::resize(id, full_size),
                                         window::set_level(id, window::Level::Normal),
                                         window::toggle_decorations(id),
                                         window::set_resizable(id, true),
-                                        window::move_to(id, new_pos)
-                                    ])
+                                    ];
+                                    
+                                    if current_pos != Point::ORIGIN {
+                                        let new_x = current_pos.x + current_size.width - full_size.width;
+                                        let new_pos = Point::new(new_x, current_pos.y);
+                                        tasks.push(window::move_to(id, new_pos));
+                                    }
+                                    
+                                    Task::batch(tasks)
                                 })
                             }
                         }
