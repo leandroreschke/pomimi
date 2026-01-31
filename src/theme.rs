@@ -33,20 +33,6 @@ pub fn create_theme(dark_mode: bool, primary: Color, transparent_bg: bool) -> Th
         WHITE
     };
 
-    // For contrast calc, we still need the "perceived" background if it's transparent.
-    // Assuming mini mode (transparent bg) is displayed over desktop, but the container has a background.
-    // The container will use the "normal" theme background.
-    // Wait, the container in mini mode explicitely sets background from palette.background.
-    // If palette.background is TRANSPARENT, the container will be transparent too!
-    // So we need TWO backgrounds: Window background (transparent) and Content background (visible).
-    // But Iced Theme only has one 'background'.
-    // Solution: Set Theme background to TRANSPARENT.
-    // In gui.rs, explicitly set the container background to DARK_BG/WHITE (depending on dark mode) instead of relying on `t.palette().background`.
-    // OR: create a custom palette where `background` is TRANSPARENT, but we know what the visible bg should be.
-    // Let's stick to: Theme background is TRANSPARENT.
-    // And in gui.rs we hardcode the background color for the mini-mode container based on dark_mode.
-
-    // However, ensure_readable needs a reference color. If background is transparent, we should use the "intended" background.
     let reference_bg = if dark_mode { DARK_BG } else { WHITE };
     let adjusted_primary = ensure_readable(primary, reference_bg);
 
@@ -86,10 +72,6 @@ fn ensure_readable(foreground: Color, background: Color) -> Color {
     if contrast >= 4.5 {
         return foreground;
     }
-
-    // Simple adjustment: Lighten or Darken
-    // If background is dark (low lum), we need lighter fg.
-    // If background is light (high lum), we need darker fg.
 
     if bg_lum < 0.5 {
         // Dark background -> Lighten

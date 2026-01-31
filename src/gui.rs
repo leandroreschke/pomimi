@@ -69,10 +69,6 @@ fn play_sound() {
                 generate_and_play_beep();
             }
         }
-
-        // Fallback for others or if system sound failed?
-        // For macOS/Windows we assume system sounds exist.
-        // If not, we could also call generate_and_play_beep().
     });
 }
 
