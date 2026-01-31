@@ -4,6 +4,7 @@ use crate::theme;
 use crate::model::{Database, Task as DbTask};
 use crate::components;
 use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ViewMode {
@@ -29,6 +30,12 @@ impl Phase {
 }
 
 fn play_sound() {
+    static PLAYING: AtomicBool = AtomicBool::new(false);
+    
+    if PLAYING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return;
+    }
+    
     std::thread::spawn(|| {
         #[cfg(target_os = "macos")]
         {
@@ -69,6 +76,8 @@ fn play_sound() {
                 generate_and_play_beep();
             }
         }
+        
+        PLAYING.store(false, Ordering::SeqCst);
     });
 }
 
@@ -174,6 +183,32 @@ pub struct State {
     pub require_confirmation: bool,
     pub window_position: Point,
     pub window_size: Size,
+    pub cached_title: String,
+    pub cached_timer_mins: String,
+    pub cached_timer_secs: String,
+    pub cached_focus_time: String,
+    last_remaining_secs: u64,
+    last_session_focus_seconds: i64,
+}
+
+impl State {
+    fn update_cached_strings(&mut self) {
+        if self.timer.remaining_secs != self.last_remaining_secs {
+            let mins = self.timer.remaining_secs / 60;
+            let secs = self.timer.remaining_secs % 60;
+            self.cached_title = format!("Pomimi - {:02}:{:02}", mins, secs);
+            self.cached_timer_mins = format!("{:02}", mins);
+            self.cached_timer_secs = format!("{:02}", secs);
+            self.last_remaining_secs = self.timer.remaining_secs;
+        }
+        
+        if self.session_focus_seconds != self.last_session_focus_seconds {
+            let hours = self.session_focus_seconds / 3600;
+            let mins = (self.session_focus_seconds % 3600) / 60;
+            self.cached_focus_time = format!("{:02}:{:02} Total Focus Time Today", hours, mins);
+            self.last_session_focus_seconds = self.session_focus_seconds;
+        }
+    }
 }
 
 pub enum PomimiApp {
@@ -251,11 +286,7 @@ impl PomimiApp {
         match self {
             PomimiApp::Loading => "Pomimi".to_string(),
             PomimiApp::Error(_) => "Pomimi - Error".to_string(),
-            PomimiApp::Loaded(state) => {
-                let mins = state.timer.remaining_secs / 60;
-                let secs = state.timer.remaining_secs % 60;
-                format!("Pomimi - {:02}:{:02}", mins, secs)
-            }
+            PomimiApp::Loaded(state) => state.cached_title.clone(),
         }
     }
 
@@ -306,6 +337,10 @@ impl PomimiApp {
                              Message::ThemeLoaded
                         );
 
+                        let initial_remaining = Phase::Focus.duration_secs();
+                        let mins = initial_remaining / 60;
+                        let secs = initial_remaining % 60;
+                        
                         *self = PomimiApp::Loaded(State {
                             db,
                             tasks: Vec::new(),
@@ -321,6 +356,12 @@ impl PomimiApp {
                             require_confirmation: false,
                             window_position: Point::ORIGIN,
                             window_size: Size::new(380.0, 800.0),
+                            cached_title: format!("Pomimi - {:02}:{:02}", mins, secs),
+                            cached_timer_mins: format!("{:02}", mins),
+                            cached_timer_secs: format!("{:02}", secs),
+                            cached_focus_time: "00:00 Total Focus Time Today".to_string(),
+                            last_remaining_secs: initial_remaining,
+                            last_session_focus_seconds: 0,
                         });
 
                         Task::batch(vec![load_tasks, load_session, load_color, load_req_conf, load_theme])
@@ -349,6 +390,7 @@ impl PomimiApp {
                     }
                     Message::SessionLoaded(Ok(secs)) => {
                         state.session_focus_seconds = secs;
+                        state.update_cached_strings();
                         Task::none()
                     }
                     Message::SessionLoaded(Err(e)) => {
@@ -419,6 +461,7 @@ impl PomimiApp {
                                 state.timer.target_time = Some(Instant::now() + Duration::from_secs(state.timer.remaining_secs));
                             }
                         }
+                        state.update_cached_strings();
                         Task::none()
                     }
                     Message::Tick => {
@@ -488,6 +531,7 @@ impl PomimiApp {
                                 }
                             }
                         }
+                        state.update_cached_strings();
                         Task::none()
                     }
                     Message::SetDuration(secs) => {
@@ -499,6 +543,7 @@ impl PomimiApp {
                         state.timer.elapsed_secs = 0;
                         state.timer.cycles_completed = 0;
                         state.active_modal = Modal::None;
+                        state.update_cached_strings();
                         Task::none()
                     }
                     Message::ResetTimer => {
@@ -510,6 +555,7 @@ impl PomimiApp {
                         state.timer.elapsed_secs = 0;
                         state.timer.waiting_for_user = false;
                         state.active_modal = Modal::None;
+                        state.update_cached_strings();
                         Task::none()
                     }
 
@@ -986,12 +1032,9 @@ impl PomimiApp {
     }
 
     fn view_footer<'a>(&self, state: &'a State) -> Element<'a, Message> {
-        let hours = state.session_focus_seconds / 3600;
-        let mins = (state.session_focus_seconds % 3600) / 60;
-
         let stats = column![
             text("CURRENT SESSION").size(10).color(theme::TEXT_DIM).font(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT }),
-            text(format!("{:02}:{:02} Total Focus Time Today", hours, mins)).size(12)
+            text(&state.cached_focus_time).size(12)
         ].spacing(2);
 
         row![

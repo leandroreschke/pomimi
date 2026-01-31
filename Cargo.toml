@@ -12,13 +12,21 @@ short_description = "A beautiful Pomodoro timer"
 long_description = "Pomimi is a minimalist Pomodoro timer to help you focus and track your productivity."
 
 [dependencies]
-iced = { version = "0.14", default-features = false, features = ["tiny-skia", "tokio", "advanced", "image", "x11", "wayland"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 directories = "5.0"
 chrono = "0.4"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "tokio", "advanced", "image"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "tokio", "advanced", "image", "x11", "wayland"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "tokio", "advanced", "image"] }
 
 [profile.release]
 lto = true

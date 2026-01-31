@@ -4,8 +4,6 @@ use crate::theme;
 use crate::gui::{Message, State, Phase, ViewMode, Modal};
 
 pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
-    let mins = state.timer.remaining_secs / 60;
-    let secs = state.timer.remaining_secs % 60;
 
     let phase_label = match state.timer.phase {
         Phase::Focus => "FOCUS",
@@ -29,7 +27,7 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
                 container(
                     row![
                         container(
-                             text(format!("{:02}", mins))
+                             text(&state.cached_timer_mins)
                                  .size(100)
                                  .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
                                  .line_height(0.9)
@@ -41,7 +39,7 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
                                  .line_height(0.9)
                         ).width(Length::Shrink).align_x(iced::Alignment::Center),
                         container(
-                             text(format!("{:02}", secs))
+                             text(&state.cached_timer_secs)
                                  .size(100)
                                  .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
                                  .line_height(0.9)
@@ -59,7 +57,7 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
     } else {
          row![
              container(
-                  text(format!("{:02}", mins))
+                  text(&state.cached_timer_mins)
                       .size(60)
                       .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
                       .line_height(0.9)
@@ -71,7 +69,7 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
                       .line_height(0.9)
              ).width(Length::Shrink).align_x(iced::Alignment::Center),
              container(
-                  text(format!("{:02}", secs))
+                  text(&state.cached_timer_secs)
                       .size(60)
                       .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
                       .line_height(0.9)
