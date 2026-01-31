@@ -731,7 +731,7 @@ impl PomimiApp {
                             let base = theme::container_default(t);
                             container::Style {
                                 border: iced::Border {
-                                    radius: 20.0.into(),
+                                    radius: 0.0.into(),
                                     width: 1.0,
                                     color: t.palette().text,
                                 },
