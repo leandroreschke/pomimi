@@ -526,9 +526,11 @@ impl PomimiApp {
                                 let mini_size = Size::new(270.0, 120.0);
                                 let current_pos = state.window_position;
                                 let current_size = state.window_size;
-                                // Anchor Bottom-Left logic: y_new = y_old + h_old - h_new
-                                let new_y = current_pos.y + current_size.height - mini_size.height;
-                                let new_pos = Point::new(current_pos.x, new_y);
+                                // Anchor Top-Right logic:
+                                // new_x = old_x + old_width - new_width
+                                // new_y = old_y (Top stays same)
+                                let new_x = current_pos.x + current_size.width - mini_size.width;
+                                let new_pos = Point::new(new_x, current_pos.y);
 
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
@@ -545,9 +547,11 @@ impl PomimiApp {
                                 let full_size = Size::new(380.0, 800.0);
                                 let current_pos = state.window_position;
                                 let current_size = state.window_size;
-                                // Anchor Bottom-Left logic
-                                let new_y = current_pos.y + current_size.height - full_size.height;
-                                let new_pos = Point::new(current_pos.x, new_y);
+                                // Anchor Top-Right logic:
+                                // new_x = old_x + old_width - new_width
+                                // new_y = old_y
+                                let new_x = current_pos.x + current_size.width - full_size.width;
+                                let new_pos = Point::new(new_x, current_pos.y);
 
                                 window::latest().and_then(move |id| {
                                     Task::batch(vec![
@@ -721,6 +725,7 @@ impl PomimiApp {
                                     width: 1.0,
                                     color: t.palette().text,
                                 },
+                                background: Some(t.palette().background.into()),
                                 ..base
                             }
                         })
