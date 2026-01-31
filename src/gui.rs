@@ -985,9 +985,10 @@ impl PomimiApp {
     pub fn theme(&self) -> Theme {
         match self {
             PomimiApp::Loaded(state) => {
-                theme::create_theme(state.is_dark_mode, state.primary_color)
+                let transparent_bg = state.view_mode == ViewMode::Mini;
+                theme::create_theme(state.is_dark_mode, state.primary_color, transparent_bg)
             },
-            _ => theme::create_theme(true, theme::ORANGE),
+            _ => theme::create_theme(true, theme::ORANGE, false),
         }
     }
 }

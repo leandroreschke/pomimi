@@ -24,9 +24,31 @@ pub const WARNING_YELLOW: Color = Color::from_rgb(1.0, 0.8, 0.0);
 pub const WARNING_YELLOW_LIGHT: Color = Color::from_rgb(0.9, 0.7, 0.0);
 pub const TRANSPARENT: Color = Color::TRANSPARENT;
 
-pub fn create_theme(dark_mode: bool, primary: Color) -> Theme {
-    let background = if dark_mode { DARK_BG } else { WHITE };
-    let adjusted_primary = ensure_readable(primary, background);
+pub fn create_theme(dark_mode: bool, primary: Color, transparent_bg: bool) -> Theme {
+    let background = if transparent_bg {
+        Color::TRANSPARENT
+    } else if dark_mode {
+        DARK_BG
+    } else {
+        WHITE
+    };
+
+    // For contrast calc, we still need the "perceived" background if it's transparent.
+    // Assuming mini mode (transparent bg) is displayed over desktop, but the container has a background.
+    // The container will use the "normal" theme background.
+    // Wait, the container in mini mode explicitely sets background from palette.background.
+    // If palette.background is TRANSPARENT, the container will be transparent too!
+    // So we need TWO backgrounds: Window background (transparent) and Content background (visible).
+    // But Iced Theme only has one 'background'.
+    // Solution: Set Theme background to TRANSPARENT.
+    // In gui.rs, explicitly set the container background to DARK_BG/WHITE (depending on dark mode) instead of relying on `t.palette().background`.
+    // OR: create a custom palette where `background` is TRANSPARENT, but we know what the visible bg should be.
+    // Let's stick to: Theme background is TRANSPARENT.
+    // And in gui.rs we hardcode the background color for the mini-mode container based on dark_mode.
+
+    // However, ensure_readable needs a reference color. If background is transparent, we should use the "intended" background.
+    let reference_bg = if dark_mode { DARK_BG } else { WHITE };
+    let adjusted_primary = ensure_readable(primary, reference_bg);
 
     let palette = if dark_mode {
         Palette {
