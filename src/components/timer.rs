@@ -1,12 +1,11 @@
 use iced::{Element, Length, Color};
 use iced::widget::{column, text, button, container, Space, stack, row};
 use crate::theme;
-use crate::gui::{Message, State, Phase, ViewMode};
+use crate::gui::{Message, State, Phase, ViewMode, Modal};
 
 pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
     let mins = state.timer.remaining_secs / 60;
     let secs = state.timer.remaining_secs % 60;
-    let time_str = format!("{:02}:{:02}", mins, secs);
 
     let phase_label = match state.timer.phase {
         Phase::Focus => "FOCUS",
@@ -28,10 +27,26 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
                 .width(Length::Fill)
                 .height(Length::Shrink),
                 container(
-                    text(time_str)
-                        .size(100)
-                        .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
-                        .line_height(0.9)
+                    row![
+                        container(
+                             text(format!("{:02}", mins))
+                                 .size(100)
+                                 .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                                 .line_height(0.9)
+                        ).width(120).align_x(iced::Alignment::End),
+                        container(
+                             text(":")
+                                 .size(100)
+                                 .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                                 .line_height(0.9)
+                        ).width(Length::Shrink).align_x(iced::Alignment::Center),
+                        container(
+                             text(format!("{:02}", secs))
+                                 .size(100)
+                                 .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                                 .line_height(0.9)
+                        ).width(120).align_x(iced::Alignment::Start),
+                    ].align_y(iced::Alignment::Center).spacing(0)
                 )
                 .align_x(iced::Alignment::Center)
                 .align_y(iced::Alignment::Center)
@@ -42,29 +57,35 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
         .padding(iced::Padding { top: 24.0, right: 0.0, bottom: 72.0, left: 0.0 })
         .into()
     } else {
-        text(time_str)
-            .size(60)
-            .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
-            .line_height(0.9)
-            .into()
+         row![
+             container(
+                  text(format!("{:02}", mins))
+                      .size(60)
+                      .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                      .line_height(0.9)
+             ).width(75).align_x(iced::Alignment::End),
+             container(
+                  text(":")
+                      .size(60)
+                      .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                      .line_height(0.9)
+             ).width(Length::Shrink).align_x(iced::Alignment::Center),
+             container(
+                  text(format!("{:02}", secs))
+                      .size(60)
+                      .font(iced::Font { family: iced::font::Family::Name("Space Grotesk"), weight: iced::font::Weight::Bold, ..iced::Font::DEFAULT })
+                      .line_height(0.9)
+             ).width(75).align_x(iced::Alignment::Start),
+         ].align_y(iced::Alignment::Center).spacing(0)
+         .into()
     };
 
     let mut col = column![timer_display].align_x(iced::Alignment::Center);
 
-    // Show strategy buttons only if NOT running
-    if !state.timer.is_running && state.view_mode == ViewMode::Full {
-         col = col.push(
-             row![
-                 button(text("25/5").size(12)).on_press(Message::SetDuration(25*60)).style(crate::components::button::secondary).padding(5),
-                 button(text("50/10").size(12)).on_press(Message::SetDuration(50*60)).style(crate::components::button::secondary).padding(5),
-             ].spacing(10).padding(10)
-         );
-    }
-
     if state.view_mode == ViewMode::Full {
          col = col.push(Space::new().height(20));
-         col = col.push(
-             button(
+
+         let main_cta = button(
                  row![
                      text(if state.timer.waiting_for_user {
                          match state.timer.phase {
@@ -85,7 +106,20 @@ pub fn timer_display<'a>(state: &'a State) -> Element<'a, Message> {
              .width(Length::Fill)
              .padding(15)
              .style(crate::components::button::primary)
-             .on_press(Message::ToggleTimer)
+             .on_press(Message::ToggleTimer);
+
+         let settings_btn = button(
+             text("\u{e8b8}").font(iced::Font::with_name("Material Symbols Outlined")).size(20)
+         )
+         .padding(15)
+         .style(crate::components::button::secondary)
+         .on_press(Message::OpenModal(Modal::TimerSettings));
+
+         col = col.push(
+             row![
+                 settings_btn,
+                 main_cta
+             ].spacing(10).width(Length::Fill)
          );
     }
 

@@ -175,4 +175,28 @@ impl Database {
         }
         Ok(false) // Default to false
     }
+
+    pub async fn save_theme(&self, is_dark: bool) -> Result<(), sqlx::Error> {
+        let val = if is_dark { "dark" } else { "light" };
+        sqlx::query(
+            "INSERT OR REPLACE INTO preferences (key, value) VALUES ('theme', ?)"
+        )
+        .bind(val)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_theme_preference(&self) -> Result<Option<bool>, sqlx::Error> {
+        let result: Option<String> = sqlx::query_scalar(
+            "SELECT value FROM preferences WHERE key = 'theme'"
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(val_str) = result {
+            return Ok(Some(val_str == "dark"));
+        }
+        Ok(None)
+    }
 }
