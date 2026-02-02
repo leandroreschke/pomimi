@@ -526,7 +526,7 @@ impl PomimiApp {
                         match state.view_mode {
                             ViewMode::Full => {
                                 state.view_mode = ViewMode::Mini;
-                                let mini_size = Size::new(270.0, 120.0);
+                                let mini_size = Size::new(270.0, 100.0);
                                 let current_pos = state.window_position;
                                 let current_size = state.window_size;
                                 state.window_size = mini_size;
@@ -708,6 +708,7 @@ impl PomimiApp {
                                 // Timer + play/pause + exit button in row
                                 row![
                                     timer_view,
+                                    Space::new().width(Length::Fill),
                                     button(text(
                                         if state.timer.waiting_for_user { "\u{e5c8}" }
                                         else if state.timer.is_running { "\u{e034}" }
@@ -721,8 +722,7 @@ impl PomimiApp {
                                 active_task_view,
                             ]
                             .align_x(iced::Alignment::Center)
-                            .spacing(10)
-                            .padding(10)
+                            .padding(8)
                         )
                         .width(Length::Fill)
                         .height(Length::Fill)
