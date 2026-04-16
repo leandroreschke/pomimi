@@ -1,6 +1,6 @@
+use iced::theme::{Custom, Palette};
 use iced::widget::container;
 use iced::{Color, Theme};
-use iced::theme::{Palette, Custom};
 use std::sync::Arc;
 
 // Colors

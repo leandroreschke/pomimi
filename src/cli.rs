@@ -10,13 +10,13 @@ struct RawMode;
 
 impl RawMode {
     fn enable() -> io::Result<Self> {
-        let status = Command::new("stty")
-            .arg("-icanon")
-            .arg("-echo")
-            .status()?;
+        let status = Command::new("stty").arg("-icanon").arg("-echo").status()?;
 
         if !status.success() {
-            return Err(io::Error::new(io::ErrorKind::Other, "Failed to set raw mode"));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Failed to set raw mode",
+            ));
         }
         Ok(RawMode)
     }
@@ -168,8 +168,16 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
     }
 
     let start_instant = Instant::now();
-    let indigo = Rgb { r: 75, g: 0, b: 130 };
-    let orange = Rgb { r: 253, g: 94, b: 83 };
+    let indigo = Rgb {
+        r: 75,
+        g: 0,
+        b: 130,
+    };
+    let orange = Rgb {
+        r: 253,
+        g: 94,
+        b: 83,
+    };
     let width = 25;
 
     let start_time_str = get_current_time_str();
@@ -193,7 +201,11 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
         println!("\x1b[2mPOMIMI: {}\x1b[0m", label);
 
         // Time Remaining with Predicted End on Left (No label for End)
-        println!("\x1b[2m{}  Time Remaining: {}\x1b[0m\n", predicted_end_str, format_duration(remaining));
+        println!(
+            "\x1b[2m{}  Time Remaining: {}\x1b[0m\n",
+            predicted_end_str,
+            format_duration(remaining)
+        );
 
         draw_progress_bar(width, progress, indigo, orange);
 
@@ -204,7 +216,10 @@ fn run_timer(duration: Duration, label: &str, require_approval: bool) {
     clear_screen();
     println!("\x1b[2m{}\x1b[0m\n", start_time_str);
     println!("\x1b[2mPOMIMI: {} - DONE!\x1b[0m", label);
-    println!("\x1b[2m{}  Time Remaining: 00:00\x1b[0m\n", predicted_end_str);
+    println!(
+        "\x1b[2m{}  Time Remaining: 00:00\x1b[0m\n",
+        predicted_end_str
+    );
     draw_progress_bar(width, 1.0, indigo, orange);
     println!("\n");
 
@@ -226,7 +241,7 @@ pub fn run() {
         if args[1] == "--cli" && args.len() > 2 {
             Some(&args[2])
         } else if args[1] != "--cli" {
-             Some(&args[1])
+            Some(&args[1])
         } else {
             None
         }
@@ -242,13 +257,13 @@ pub fn run() {
             let secs = time_str.trim_end_matches('s').parse::<u64>().unwrap_or(0);
             Duration::from_secs(secs)
         } else {
-             let mins = time_str.parse::<u64>().unwrap_or(0);
-             Duration::from_secs(mins * 60)
+            let mins = time_str.parse::<u64>().unwrap_or(0);
+            Duration::from_secs(mins * 60)
         };
 
         if duration.as_secs() > 0 {
-             run_timer(duration, "Custom Focus", false);
-             return;
+            run_timer(duration, "Custom Focus", false);
+            return;
         } else {
             // If it failed to parse, maybe it's not a time string but a command?
             // For now, keep original behavior
@@ -278,8 +293,12 @@ pub fn run() {
         let items_display = [
             "25/5 Classic",
             "50/10 Long",
-            if require_approval { "Require Input: ON" } else { "Require Input: OFF" },
-            "Quit"
+            if require_approval {
+                "Require Input: ON"
+            } else {
+                "Require Input: OFF"
+            },
+            "Quit",
         ];
 
         for (i, label) in items_display.iter().enumerate() {
@@ -307,24 +326,32 @@ pub fn run() {
             }
             Key::Enter | Key::Char('a') | Key::Char('A') => {
                 match selection {
-                    0 => { // Classic
+                    0 => {
+                        // Classic
                         drop(_raw);
                         run_timer(Duration::from_secs(25 * 60), "Focus (25m)", false);
                         run_timer(Duration::from_secs(5 * 60), "Break (5m)", require_approval);
                         break;
-                    },
-                    1 => { // Long
+                    }
+                    1 => {
+                        // Long
                         drop(_raw);
                         run_timer(Duration::from_secs(50 * 60), "Focus (50m)", false);
-                        run_timer(Duration::from_secs(10 * 60), "Break (10m)", require_approval);
+                        run_timer(
+                            Duration::from_secs(10 * 60),
+                            "Break (10m)",
+                            require_approval,
+                        );
                         break;
-                    },
-                    2 => { // Toggle
+                    }
+                    2 => {
+                        // Toggle
                         require_approval = !require_approval;
-                    },
-                    3 => { // Quit
+                    }
+                    3 => {
+                        // Quit
                         break;
-                    },
+                    }
                     _ => {}
                 }
             }

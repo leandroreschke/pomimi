@@ -1,15 +1,15 @@
 mod cli;
-mod model;
-mod gui;
-mod theme;
 mod components;
+mod gui;
+mod model;
+mod theme;
 
-use std::env;
 use gui::PomimiApp;
+use std::env;
 
 fn main() -> iced::Result {
     let args: Vec<String> = env::args().collect();
-    
+
     let run_cli = if args.len() > 1 {
         if args[1] == "--cli" {
             true

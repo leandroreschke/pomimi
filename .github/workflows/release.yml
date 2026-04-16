@@ -1,0 +1,263 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    name: Verify release version
+    runs-on: ubuntu-latest
+    outputs:
+      cargo_version: ${{ steps.version.outputs.cargo_version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Cargo.toml version against tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF_NAME}"
+          CARGO_VERSION="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')"
+          if [[ "v${CARGO_VERSION}" != "${TAG_NAME}" ]]; then
+            echo "Tag ${TAG_NAME} does not match Cargo.toml version v${CARGO_VERSION}" >&2
+            exit 1
+          fi
+          echo "cargo_version=${CARGO_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+
+  build-linux:
+    name: Build Linux archive
+    needs: verify-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --all-targets --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package Linux archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/pomimi-linux-x64
+          cp target/release/pomimi dist/pomimi-linux-x64/
+          cp README.md LICENSE dist/pomimi-linux-x64/
+          tar -C dist -czf dist/pomimi-linux-x64.tar.gz pomimi-linux-x64
+
+      - name: Upload Linux archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: pomimi-linux-x64
+          path: dist/pomimi-linux-x64.tar.gz
+
+  build-windows:
+    name: Build Windows archive
+    needs: verify-version
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --all-targets --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package Windows archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item README.md, LICENSE -Destination dist
+          Copy-Item target/release/pomimi.exe -Destination dist
+          Compress-Archive -Path dist/pomimi.exe, dist/README.md, dist/LICENSE -DestinationPath dist/pomimi-windows-x64.zip -Force
+
+      - name: Upload Windows archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: pomimi-windows-x64
+          path: dist/pomimi-windows-x64.zip
+
+  build-macos-intel:
+    name: Build macOS Intel binary
+    needs: verify-version
+    runs-on: macos-13
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --all-targets --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Upload Intel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pomimi-macos-x86_64-raw
+          path: target/release/pomimi
+
+  build-macos-arm:
+    name: Build macOS Apple Silicon binary
+    needs: verify-version
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --all-targets --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Upload Apple Silicon binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pomimi-macos-aarch64-raw
+          path: target/release/pomimi
+
+  build-macos-universal:
+    name: Build macOS universal archive
+    needs:
+      - verify-version
+      - build-macos-intel
+      - build-macos-arm
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Intel binary
+        uses: actions/download-artifact@v4
+        with:
+          name: pomimi-macos-x86_64-raw
+          path: dist/macos-x86_64
+
+      - name: Download Apple Silicon binary
+        uses: actions/download-artifact@v4
+        with:
+          name: pomimi-macos-aarch64-raw
+          path: dist/macos-aarch64
+
+      - name: Create universal macOS binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/pomimi-macos-universal
+          lipo -create \
+            dist/macos-x86_64/pomimi \
+            dist/macos-aarch64/pomimi \
+            -output dist/pomimi-macos-universal/pomimi
+          chmod +x dist/pomimi-macos-universal/pomimi
+          cp README.md LICENSE dist/pomimi-macos-universal/
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/pomimi-macos-universal \
+            dist/pomimi-macos-universal.zip
+
+      - name: Upload macOS archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: pomimi-macos-universal
+          path: dist/pomimi-macos-universal.zip
+
+  publish-release:
+    name: Publish GitHub release
+    needs:
+      - verify-version
+      - build-linux
+      - build-windows
+      - build-macos-universal
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux archive
+        uses: actions/download-artifact@v4
+        with:
+          name: pomimi-linux-x64
+          path: dist
+
+      - name: Download Windows archive
+        uses: actions/download-artifact@v4
+        with:
+          name: pomimi-windows-x64
+          path: dist
+
+      - name: Download macOS archive
+        uses: actions/download-artifact@v4
+        with:
+          name: pomimi-macos-universal
+          path: dist
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum \
+            pomimi-linux-x64.tar.gz \
+            pomimi-windows-x64.zip \
+            pomimi-macos-universal.zip \
+            > SHA256SUMS.txt
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/pomimi-linux-x64.tar.gz
+            dist/pomimi-windows-x64.zip
+            dist/pomimi-macos-universal.zip
+            dist/SHA256SUMS.txt

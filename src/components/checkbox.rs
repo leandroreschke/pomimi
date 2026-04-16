@@ -1,6 +1,6 @@
-use iced::{Element, Theme, Color};
-use iced::widget::{button, container, Space};
 use crate::theme;
+use iced::widget::{button, container, Space};
+use iced::{Color, Element, Theme};
 
 pub fn checkbox<'a, Message: Clone + 'a>(
     is_checked: bool,
@@ -8,17 +8,14 @@ pub fn checkbox<'a, Message: Clone + 'a>(
     on_toggle: Message,
 ) -> Element<'a, Message> {
     button(
-        container(
-            if is_checked {
-                container(Space::new().width(8).height(8))
-                    .style(move |_t: &Theme| container::Style { 
-                        background: Some(primary_color.into()), 
-                        ..container::Style::default() 
-                    })
-            } else {
-                container(Space::new().width(8).height(8))
-            }
-        )
+        container(if is_checked {
+            container(Space::new().width(8).height(8)).style(move |_t: &Theme| container::Style {
+                background: Some(primary_color.into()),
+                ..container::Style::default()
+            })
+        } else {
+            container(Space::new().width(8).height(8))
+        })
         .width(24)
         .height(24)
         .align_x(iced::Alignment::Center)
@@ -31,7 +28,7 @@ pub fn checkbox<'a, Message: Clone + 'a>(
                 radius: 0.0.into(),
             },
             ..container::Style::default()
-        })
+        }),
     )
     .padding(0)
     .style(move |_theme: &Theme, status: button::Status| {
@@ -43,7 +40,13 @@ pub fn checkbox<'a, Message: Clone + 'a>(
         };
         match status {
             button::Status::Hovered => button::Style {
-                background: Some(Color { a: 0.1, ..primary_color }.into()),
+                background: Some(
+                    Color {
+                        a: 0.1,
+                        ..primary_color
+                    }
+                    .into(),
+                ),
                 ..base
             },
             _ => base,
