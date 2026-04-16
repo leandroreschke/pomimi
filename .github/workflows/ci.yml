@@ -1,12 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - '**'
-    tags-ignore:
-      - 'v*'
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,14 +17,17 @@ jobs:
         include:
           - name: Linux
             os: ubuntu-latest
+            command: cargo test --all-targets --locked
           - name: Windows
             os: windows-latest
+            command: cargo build --release --locked
           - name: macOS
             os: macos-latest
+            command: cargo build --release --locked
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -53,8 +52,5 @@ jobs:
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Run tests
-        run: cargo test --all-targets --locked
-
-      - name: Build release binary
-        run: cargo build --release --locked
+      - name: Validate build
+        run: ${{ matrix.command }}

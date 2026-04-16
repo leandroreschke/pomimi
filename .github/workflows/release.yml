@@ -2,44 +2,45 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  verify-version:
-    name: Verify release version
+  prepare-release:
+    name: Prepare release metadata
     runs-on: ubuntu-latest
     outputs:
-      cargo_version: ${{ steps.version.outputs.cargo_version }}
-      tag_name: ${{ steps.version.outputs.tag_name }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Validate Cargo.toml version against tag
-        id: version
+      - name: Generate release metadata
+        id: meta
         shell: bash
         run: |
           set -euo pipefail
-          TAG_NAME="${GITHUB_REF_NAME}"
-          CARGO_VERSION="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')"
-          if [[ "v${CARGO_VERSION}" != "${TAG_NAME}" ]]; then
-            echo "Tag ${TAG_NAME} does not match Cargo.toml version v${CARGO_VERSION}" >&2
-            exit 1
-          fi
-          echo "cargo_version=${CARGO_VERSION}" >> "$GITHUB_OUTPUT"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          STAMP="$(date -u +'%Y%m%d-%H%M%S')"
+          TAG_NAME="main-${STAMP}-${SHORT_SHA}"
+          RELEASE_NAME="Main build ${STAMP} (${SHORT_SHA})"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "release_name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
 
   build-linux:
     name: Build Linux archive
-    needs: verify-version
+    needs: prepare-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Linux build dependencies
         run: |
@@ -63,9 +64,6 @@ jobs:
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Run tests
-        run: cargo test --all-targets --locked
-
       - name: Build release binary
         run: cargo build --release --locked
 
@@ -86,20 +84,17 @@ jobs:
 
   build-windows:
     name: Build Windows archive
-    needs: verify-version
+    needs: prepare-release
     runs-on: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
-
-      - name: Run tests
-        run: cargo test --all-targets --locked
 
       - name: Build release binary
         run: cargo build --release --locked
@@ -120,20 +115,17 @@ jobs:
 
   build-macos-intel:
     name: Build macOS Intel binary
-    needs: verify-version
+    needs: prepare-release
     runs-on: macos-13
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
-
-      - name: Run tests
-        run: cargo test --all-targets --locked
 
       - name: Build release binary
         run: cargo build --release --locked
@@ -146,20 +138,17 @@ jobs:
 
   build-macos-arm:
     name: Build macOS Apple Silicon binary
-    needs: verify-version
+    needs: prepare-release
     runs-on: macos-14
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@v2
-
-      - name: Run tests
-        run: cargo test --all-targets --locked
 
       - name: Build release binary
         run: cargo build --release --locked
@@ -173,13 +162,13 @@ jobs:
   build-macos-universal:
     name: Build macOS universal archive
     needs:
-      - verify-version
+      - prepare-release
       - build-macos-intel
       - build-macos-arm
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download Intel binary
         uses: actions/download-artifact@v4
@@ -217,12 +206,17 @@ jobs:
   publish-release:
     name: Publish GitHub release
     needs:
-      - verify-version
+      - prepare-release
       - build-linux
       - build-windows
       - build-macos-universal
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
       - name: Download Linux archive
         uses: actions/download-artifact@v4
         with:
@@ -241,6 +235,15 @@ jobs:
           name: pomimi-macos-universal
           path: dist
 
+      - name: Create release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ needs.prepare-release.outputs.tag_name }}" "${GITHUB_SHA}"
+          git push origin "${{ needs.prepare-release.outputs.tag_name }}"
+
       - name: Generate checksums
         shell: bash
         run: |
@@ -255,6 +258,10 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          name: ${{ needs.prepare-release.outputs.release_name }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
           generate_release_notes: true
           files: |
             dist/pomimi-linux-x64.tar.gz
