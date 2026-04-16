@@ -19,18 +19,18 @@ jobs:
     outputs:
       tag_name: ${{ steps.meta.outputs.tag_name }}
       release_name: ${{ steps.meta.outputs.release_name }}
-      short_sha: ${{ steps.meta.outputs.short_sha }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       - name: Generate release metadata
         id: meta
         shell: bash
         run: |
           set -euo pipefail
-          SHORT_SHA="${GITHUB_SHA::7}"
-          STAMP="$(date -u +'%Y%m%d-%H%M%S')"
-          TAG_NAME="main-${STAMP}-${SHORT_SHA}"
-          RELEASE_NAME="Main build ${STAMP} (${SHORT_SHA})"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          VERSION="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')"
+          TAG_NAME="v${VERSION}"
+          RELEASE_NAME="v${VERSION}"
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
           echo "release_name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
 
@@ -241,6 +241,10 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "${{ needs.prepare-release.outputs.tag_name }}" >/dev/null 2>&1; then
+            echo "Tag ${{ needs.prepare-release.outputs.tag_name }} already exists. Bump Cargo.toml version before merging to main." >&2
+            exit 1
+          fi
           git tag "${{ needs.prepare-release.outputs.tag_name }}" "${GITHUB_SHA}"
           git push origin "${{ needs.prepare-release.outputs.tag_name }}"
 
@@ -261,7 +265,6 @@ jobs:
           tag_name: ${{ needs.prepare-release.outputs.tag_name }}
           name: ${{ needs.prepare-release.outputs.release_name }}
           target_commitish: ${{ github.sha }}
-          prerelease: true
           generate_release_notes: true
           files: |
             dist/pomimi-linux-x64.tar.gz
