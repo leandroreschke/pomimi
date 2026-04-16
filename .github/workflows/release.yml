@@ -116,7 +116,7 @@ jobs:
   build-macos-intel:
     name: Build macOS Intel binary
     needs: prepare-release
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -165,7 +165,7 @@ jobs:
       - prepare-release
       - build-macos-intel
       - build-macos-arm
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6

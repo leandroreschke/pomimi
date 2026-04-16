@@ -22,7 +22,7 @@ jobs:
             os: windows-latest
             command: cargo build --release --locked
           - name: macOS
-            os: macos-latest
+            os: macos-14
             command: cargo build --release --locked
 
     steps:
